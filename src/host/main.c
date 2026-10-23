@@ -736,8 +736,8 @@ static void present(void)
         ui_text(UI_BODY, 38, 28, ui_rgba(242, 178, 58, 255), osd);
     }
     if (g_set.show_fps) {
-        char s[64];
-        SDL_snprintf(s, sizeof s, "Game %.0f  Display %.0f", fps_game, fps_disp);
+        char s[96];
+        SDL_snprintf(s, sizeof s, "%s  Game %.0f  Display %.0f", SDL_GetRendererName(ren), fps_game, fps_disp);
         ui_rect(1260 - ui_text_w(UI_SMALL, s) - 16, 10, ui_text_w(UI_SMALL, s) + 16, 30, ui_rgba(0, 0, 0, 160));
         ui_text_right(UI_SMALL, 1252, 14, ui_rgba(160, 230, 140, 255), s);
     }
@@ -1510,6 +1510,10 @@ int main(int argc, char **argv)
     if (!input_load(controls_path)) input_save(controls_path);
 
     win = SDL_CreateWindow(APP_TITLE, g_set.window_w, g_set.window_h, SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
+    /* Renderer is selected at launch. Environment setting SDL_RENDER_DRIVER
+     * retains SDL's normal higher priority as an override. */
+    if (g_set.renderer == RENDERER_OPENGL) SDL_SetHint(SDL_HINT_RENDER_DRIVER, "opengl");
+    else if (g_set.renderer == RENDERER_SOFTWARE) SDL_SetHint(SDL_HINT_RENDER_DRIVER, "software");
     ren = win ? SDL_CreateRenderer(win, 0) : 0;
     if (!ren) {
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, APP_TITLE, SDL_GetError(), 0);

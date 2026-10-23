@@ -44,8 +44,47 @@ Host keys:
 Everything can be rebound under **Controls**.
 
 **HD graphics:** Settings → System → **Build HD Pack**, once per game. It takes a few minutes. See `docs/09-hd-packs.md`.
+On Linux, choose the rendering backend in Settings → Display → **Renderer (restart)**. OpenGL (GPU) is the default; enable **Show FPS** to see the active SDL renderer. Software rendering remains available as a fallback.
 
 ## Building
+### Linux (Ubuntu/Debian)
+
+Install the compiler, CMake, SDL3 development files, and Python tooling:
+
+```sh
+sudo apt update
+sudo apt install build-essential cmake python3 python3-venv python3-pip libsdl3-dev
+```
+
+Create a virtual environment for the ROM analysis tools and install their Python dependencies:
+
+```sh
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install capstone pillow
+```
+
+Place your own supported ROM dumps in `rom/` as `desert_strike.bin`, `jungle_strike.bin` and `urban_strike.bin`. Then generate each game's C source and build the launcher:
+
+```sh
+python tools/trace.py --game desert
+python tools/recomp.py --game desert
+python tools/trace.py --game jungle
+python tools/recomp.py --game jungle
+python tools/trace.py --game urban
+python tools/recomp.py --game urban
+
+cmake -S . -B build -DDS_SYSTEM_SDL=ON -DDS_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Release
+cmake --build build --parallel
+```
+
+The executable is `build/StrikeCollectionHD`; the HD pack upscaler is `build/hdpack_xbrz`. `DS_SYSTEM_SDL=ON` uses the installed SDL3 package. To let CMake fetch and build SDL3 instead, omit that option; this requires network access during configuration and SDL's Linux development dependencies.
+
+The generated game sources are derived from the ROMs and are not committed. Keep the Python virtual environment active when running the trace and recompilation tools.
+
+### Windows
+
 Requirements:
 - Python 3.10+ with `capstone` and `pillow`;
 - CMake 3.16+;
