@@ -12,6 +12,7 @@ A static recompilation of Sega Genesis *Desert Strike: Return to the Gulf* to C 
 It's the first game of a planned **Strike Remastered Collection HD** (Desert, Jungle and Urban Strike, behind an animated launcher). See `docs/03-collection-plan.md`.
 
 ## Where things live
+- **GitHub:** https://github.com/Icedomega13/StrikeHDCollection (branch `main`): the source only. `rom/`, `generated/`, `out/` and `dist/` are git-ignored, so no ROMs and no ROM-derived code.
 - **Source of truth:** the user's PC at `C:\Users\dac30\source\DesertStrikeHD`, reached through the remote-devices bridge. It has no git repo yet.
   - The latest Windows build is in `dist\StrikeCollectionHD.exe` there. (`dist\DesertStrikeHD.exe` is an older single-game build.)
 - **Cloud working copy:** `/home/claude/dshd`. It may be gone in a new session; the PC copy is complete.
@@ -81,6 +82,7 @@ It's the first game of a planned **Strike Remastered Collection HD** (Desert, Ju
      - Both are recompiled and lockstep-exact.
      - The program is now `StrikeCollectionHD.exe`, with a game selector and "Switch Game" in the pause menu.
    - Widescreen 16:10/16:9 now works in all three games. The shared playfield test is in `games/strike_engine.h`.
+   - **Game picker:** the Add ROM button was replaced by **Settings** (opens the settings menu in launcher mode: Settings / Controls / Back) and **Quit**. Selecting a game without a ROM still opens the file picker. The final installer is built (`dist\StrikeCollectionHD-Setup.exe`, 5.0 MB), and the source is published to GitHub.
    - **Cheats menu done** (`docs/06-cheat-addresses.md`): god mode, unlimited fuel/ammo/lives, campaign select, in all three games. Settings rows now fit any item count.
    - **HD pack builder (Settings → System → Build HD Pack):**
      - The extractor starts every campaign through the `g_start_campaign` imm patch: Desert `$002EC2` → `$FF1098`, Jungle `$038C90` → `$FF10B0`, Urban `$0018CE` → `$FF10C0`. That gives 4 / 9 / 10 campaigns.
