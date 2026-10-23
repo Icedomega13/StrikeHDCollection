@@ -1,0 +1,85 @@
+{
+  "jump_tables": {},
+  "extra_entries": [
+    "002300",
+    "002334",
+    "002418",
+    "00247E",
+    "0024C8",
+    "007536",
+    "007574",
+    "0075A4",
+    "0075FA",
+    "007D78",
+    "007D7A",
+    "00A0BE"
+  ],
+  "comment_entries": "Code reached only through run-time pointers (found by tools/add_dynamic_entries.py)",
+  "comment_patches": "Widescreen, same scheme as Desert Strike (docs/07-widescreen.md). Each patch equals the original when g_ws_ext == 0.",
+  "patches": {
+    "008FA6": {
+      "imm": "0x140 + g_ws_win",
+      "why": "free-scroll range: max camera x = window + 512 - (320 + ext)"
+    },
+    "008FAC": {
+      "post": "W16(R.a[1] + 0x3A, R16(R.a[1] + 0x3A) + g_ws_win);",
+      "why": "free-scroll range: min camera x = window + ext"
+    },
+    "0095E6": {
+      "post": "SET_DW(2, R.d[2] - g_ws_win);",
+      "why": "re-window when scrolling left"
+    },
+    "0095FE": {
+      "imm": "0xFF48 + g_ws_win",
+      "why": "re-window when scrolling right"
+    },
+    "0095B0": {
+      "imm": "0x40 + g_ws_ext",
+      "why": "active-object rect left"
+    },
+    "0095BC": {
+      "imm": "0x180 + g_ws_ext",
+      "why": "active-object rect right"
+    },
+    "009482": {
+      "imm": "0x40 + g_ws_ext",
+      "why": "active rect init"
+    },
+    "00948E": {
+      "imm": "0x180 + g_ws_ext",
+      "why": "active rect init"
+    },
+    "0094A4": {
+      "imm": "0x40 + g_ws_ext",
+      "why": "active rect init"
+    },
+    "0094B0": {
+      "imm": "0x180 + g_ws_ext",
+      "why": "active rect init"
+    },
+    "009446": {
+      "post": "SET_DW(2, R.d[2] - g_ws_win);",
+      "why": "initial window origin = camera - ext"
+    },
+    "009436": {
+      "imm": "0x141 + g_ws_ext",
+      "why": "camera clamp: max x"
+    },
+    "00942A": {
+      "post": "W16(R.a[1] + 0x32, R16(R.a[1] + 0x32) + g_ws_ext);",
+      "why": "camera clamp: min x"
+    },
+    "009376": {
+      "post": "g_ws_flight_frame = g_frame;",
+      "why": "playfield detection"
+    },
+    "006ABC": {
+      "post": "g_ws_flight_frame = g_frame;",
+      "why": "per-frame camera update (runs even when the camera is still): playfield marker"
+    },
+    "0018CE": {
+      "imm": "(uint32_t)g_start_campaign",
+      "why": "new game starts at campaign g_start_campaign (0 = original)"
+    }
+  }
+}

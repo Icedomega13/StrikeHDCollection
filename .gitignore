@@ -1,0 +1,21 @@
+# Never commit game data
+rom/*
+!rom/README.txt
+*.bin
+*.md.rom
+
+# Generated
+out/
+build/
+harness/run*/
+__pycache__/
+tools/vendor/
+generated/
+
+# Large third-party trees fetched by tools/CMake, not committed
+third_party/SDL3/
+third_party/capstone/
+third_party/Musashi/
+
+# Built programs
+dist/

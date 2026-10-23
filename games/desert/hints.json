@@ -1,0 +1,87 @@
+{
+  "comment": "Manual annotations for control flow the tracer can't infer.",
+  "jump_tables": {
+    "00F698": {
+      "kind": "long_offset_table",
+      "table": "00F69A",
+      "rel": "00F058",
+      "count": 48
+    }
+  },
+  "extra_entries": [
+    "003C50",
+    "007ECA",
+    "0089D4",
+    "0089D6",
+    "009206",
+    "0FF86A"
+  ],
+  "comment_entries": "VBlank handlers installed at runtime into the RAM trampoline $FF1C72 (jmp abs.l)",
+  "comment_patches": "Widescreen: g_ws_ext = extra pixels drawn each side (multiple of 8, max 56). Each patch reduces to the original instruction when g_ws_ext == 0, so lockstep is unaffected.",
+  "patches": {
+    "00B3F4": {
+      "imm": "0x140 + g_ws_win",
+      "why": "free-scroll range: max camera x = window + 512 - (320 + ext)"
+    },
+    "00B3FA": {
+      "post": "W16(R.a[1] + 0x3A, R16(R.a[1] + 0x3A) + g_ws_win);",
+      "why": "free-scroll range: min camera x = window + ext"
+    },
+    "00BA54": {
+      "post": "SET_DW(2, R.d[2] - g_ws_win);",
+      "why": "re-window when scrolling left: window starts ext px left of the view"
+    },
+    "00BA6C": {
+      "imm": "0xFF48 + g_ws_win",
+      "why": "re-window when scrolling right: window ends 8 px past view + ext"
+    },
+    "00BA22": {
+      "imm": "0x40 + g_ws_ext",
+      "why": "active-object rect left = camera - 64 - ext"
+    },
+    "00BA2E": {
+      "imm": "0x180 + g_ws_ext",
+      "why": "active-object rect right = camera + 384 + ext"
+    },
+    "00BB84": {
+      "imm": "0x40 + g_ws_ext",
+      "why": "active rect (layer A init)"
+    },
+    "00BB90": {
+      "imm": "0x180 + g_ws_ext",
+      "why": "active rect (layer A init)"
+    },
+    "00BBA6": {
+      "imm": "0x40 + g_ws_ext",
+      "why": "active rect (layer B init)"
+    },
+    "00BBB2": {
+      "imm": "0x180 + g_ws_ext",
+      "why": "active rect (layer B init)"
+    },
+    "00BB48": {
+      "post": "SET_DW(2, R.d[2] - g_ws_win);",
+      "why": "initial window origin = camera - ext"
+    },
+    "00BB38": {
+      "imm": "0x140 + g_ws_ext",
+      "why": "camera clamp: max x = map width - (320 + ext)"
+    },
+    "00BB2C": {
+      "post": "W16(R.a[1] + 0x32, R16(R.a[1] + 0x32) + g_ws_ext);",
+      "why": "camera clamp: min x = map left + ext"
+    },
+    "00BCBC": {
+      "post": "g_ws_flight_frame = g_frame;",
+      "why": "marks frames where the scrolling map is shown (renderer widens only these)"
+    },
+    "00764E": {
+      "post": "g_ws_flight_frame = g_frame;",
+      "why": "per-frame camera update (runs even when the camera is still): playfield marker"
+    },
+    "002EC2": {
+      "imm": "(uint32_t)g_start_campaign",
+      "why": "new game starts at campaign g_start_campaign (0 = original)"
+    }
+  }
+}

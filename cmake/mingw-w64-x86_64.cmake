@@ -1,0 +1,21 @@
+# Cross-compile for 64-bit Windows with llvm-mingw (or another mingw-w64).
+# usage: cmake -S . -B build-win -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-w64-x86_64.cmake
+#        [-DMINGW_ROOT=/path/to/llvm-mingw]
+set(CMAKE_SYSTEM_NAME Windows)
+set(CMAKE_SYSTEM_PROCESSOR x86_64)
+if(NOT MINGW_ROOT AND DEFINED ENV{MINGW_ROOT})
+    set(MINGW_ROOT $ENV{MINGW_ROOT})
+endif()
+set(_p x86_64-w64-mingw32)
+if(MINGW_ROOT)
+    set(_b ${MINGW_ROOT}/bin/)
+endif()
+set(CMAKE_C_COMPILER   ${_b}${_p}-clang)
+set(CMAKE_CXX_COMPILER ${_b}${_p}-clang++)
+set(CMAKE_RC_COMPILER  ${_b}${_p}-windres)
+if(MINGW_ROOT)
+    set(CMAKE_FIND_ROOT_PATH ${MINGW_ROOT}/${_p})
+endif()
+set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
