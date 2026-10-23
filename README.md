@@ -22,6 +22,9 @@ Native PC versions of the three Sega Genesis Strike games: *Desert Strike: Retur
 
 The recompiled C (`generated/`) is produced from your ROM on your machine and is not part of this repository.
 
+## Download
+The Windows installer and a portable zip are on the [Releases](https://github.com/Icedomega13/StrikeHDCollection/releases) page. Both need your own ROMs.
+
 ## Playing
 1. Run the installer, or `StrikeCollectionHD.exe`. Point it at your ROMs; they are copied to `%APPDATA%\DesertStrikeHD\DesertStrikeHD\roms\`.
 2. Pick a game. **Settings** on the game picker, or **Esc / Back** in game, opens the menu.
@@ -82,6 +85,9 @@ harness/           Musashi reference runner + input scripts
 installer/         Inno Setup script
 docs/              design notes and findings (start with docs/HANDOFF.md)
 ```
+
+## License
+The project's own code is under the MIT license (`LICENSE`). Third-party components keep their own licenses (below).
 
 ## Third-party
 - Musashi 68000 core (MIT), reference only.
