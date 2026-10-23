@@ -1,6 +1,6 @@
 # Desert Strike HD — handoff for Sol
 
-Last updated: 2026-10-22. All three games are recompiled and lockstep-exact; widescreen up to 32:9, HD packs and the speed option work; everything on the original list is done, cheats included. Next: whatever the user asks for.
+Last updated: 2026-10-22 (v0.6.0 released). All three games are recompiled and lockstep-exact; widescreen up to 32:9, HD packs and the speed option work; everything on the original list is done, cheats included. Next: whatever the user asks for.
 
 ## What this is
 A static recompilation of Sega Genesis *Desert Strike: Return to the Gulf* to C for PC. Goals:
@@ -13,6 +13,8 @@ It's the first game of a planned **Strike Remastered Collection HD** (Desert, Ju
 
 ## Where things live
 - **GitHub:** https://github.com/Icedomega13/StrikeHDCollection (branch `main`): the source only. `rom/`, `generated/`, `out/` and `dist/` are git-ignored, so no ROMs and no ROM-derived code.
+  - MIT license. **Release v0.6.0** is published (https://github.com/Icedomega13/StrikeHDCollection/releases/tag/v0.6.0), with the Setup exe and a portable zip; copies are in `release\` on the PC.
+  - From the cloud session, branch pushes work, but creating releases, pushing tags and deleting branches are blocked. Do those through the built-in browser on the PC, where the user is signed in to GitHub. Assets reach the page from a temporary branch: fetch them from raw.githubusercontent.com, put them in `#releases-upload` with a DataTransfer, then delete the branch.
 - **Source of truth:** the user's PC at `C:\Users\dac30\source\DesertStrikeHD`, reached through the remote-devices bridge. It has no git repo yet.
   - The latest Windows build is in `dist\StrikeCollectionHD.exe` there. (`dist\DesertStrikeHD.exe` is an older single-game build.)
 - **Cloud working copy:** `/home/claude/dshd`. It may be gone in a new session; the PC copy is complete.
@@ -104,5 +106,12 @@ It's the first game of a planned **Strike Remastered Collection HD** (Desert, Ju
    - **Ultrawide 21:9 / 32:9 / "Match window"** in all three games: planes painted from map data in `games/strike_world.c`, signed sprite X. See `docs/07-widescreen.md`.
 2. **Next:**
    - Per-game input scripts for better coverage.
-   - Installer is built (`dist\StrikeCollectionHD-Setup.exe`); the user still needs to run it end to end. Optional: .zip ROMs, an in-app Manage ROMs screen, focus-follows background.
+   - **Minimap (2026-10-22, `docs/11-minimap.md`):** lower-left overlay of the pause map, live: available objectives' units, the selected category, player, Desert's frigate. LB/RB (Q/E) step through the pause map's list (the game's own selection word, so the pause map follows). Terrain = the pause map's picture, captured with hidden frames from a saved state (sandbox in `src/host/main.c`, `mm_capture`) and cached in `<settings>/minimap/`. Marker logic in `games/strike_minimap.c` (ports of each game's icon builder). Settings → Picture → Minimap / Minimap Size. LB/RB were second A/C buttons; old controls.ini files lose those two bindings on load. Lockstep 15/15 MATCH after the change. Policy: only what the pause map shows; enemy units maybe later if it doesn't look busy (the user feels it would make the game too easy).
+   - **Next features (user's picks, 2026-10-22):**
+     1. **Better HD art: high priority.** The user chose AI upscaling on their PC. **Built (2026-10-22, untested on real hardware):** Real-ESRGAN ncnn-vulkan (portable, BSD-3) ships in `dist\\ai\\` with the x4plus-anime and animevideov3 models. `hdpack_xbrz --ai` redoes the sprite and context sheets on the GPU and falls back to xBRZ when Vulkan is missing; Settings → System → HD Pack Style (`docs/09-hd-packs.md`). The cloud has no GPU, and building ncnn here for CPU testing was blocked by the safety check, so the look hasn't been seen yet: the user's Build HD Pack run is the first test. Possible follow-ups: per-sprite touch-up tools, other models.
+     2-5. **Done 2026-10-23 (`docs/12-rewind-autosave-stats.md`):** autosave (Auto 1-3 slots, mission start plus objective completion), rewind (left trigger / Backspace, XOR-delta history in `src/host/rewind.c`), rumble (System slider), stats (`stats.ini`, pause-menu Stats page, game-picker line). Not yet: kills and score (RAM not mapped), remembering unlocked campaigns. Verified headless: rewind, both autosave triggers, the stats file, the menus. Rumble is untested (no pad in the cloud).
+     - **Minimap fix 2026-10-23:** Desert sets its objective list (`$FF1030`) and mask only when the pause/briefing screen opens; they're now computed from ROM `$3018C` + campaign `$FF1B10` with the campaign-3 sequential rule (`$005102`). Before this, the minimap appeared only after the first pause.
+     Also suggested but not picked yet: interpreter fallback for unrecompiled code (Musashi), a CRT shader, HD briefing text, colorblind colors, code signing, an update check and a Linux/Steam Deck build.
+   - **Planned for the next pass (user request, after more testing; not started):** the launcher background should follow the selection. When a game is highlighted with keyboard or gamepad, or the mouse hovers over it, switch the background to that game's live intro instead of the shuffle cycle. Return to the shuffle when nothing is focused or after the mouse leaves. The `att_*` live-intro code in `src/host/main.c` already runs each game's attract mode, so switch which one is shown and keep the 4:3 letterbox; a short crossfade would avoid a hard cut.
+   - Installer is built (`dist\StrikeCollectionHD-Setup.exe`); the user still needs to run it end to end. Optional: .zip ROMs, an in-app Manage ROMs screen.
 3. Keep this file updated at each milestone.

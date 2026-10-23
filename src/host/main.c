@@ -17,6 +17,7 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 #include <stdio.h>
+#include <setjmp.h>
 #include <string.h>
 #include "runtime/cpu.h"
 #include "game.h"
@@ -29,6 +30,8 @@
 #include "settings.h"
 #include "menu.h"
 #include "ui.h"
+#include "rewind.h"
+#include "stats.h"
 
 #define APP_TITLE   "Strike Collection HD"
 #define FRAME_NS    16688154ull            /* 896040 / 53693175 s */
@@ -41,7 +44,7 @@ static SDL_Renderer *ren;
 static SDL_Texture *tex, *upscaled;
 static SDL_AudioStream *aud;
 static char *pref;                          /* settings/save folder, ends in a separator */
-static char settings_path[1024], controls_path[1024];
+static char settings_path[1024], controls_path[1024], stats_path[1024];
 static const game_module *game;
 
 static uint32_t fb[VDP_MAX_W * VDP_H];
@@ -152,9 +155,12 @@ static vdp_world_plane ws_planes[2];          /* painted planes of the last fram
 static int ws_planes_ok;                          /* playfield on screen (set at vblank) */
 static int extracting;                      /* graphics extraction running */
 static int att_on;                          /* the emulation is running the launcher background */
+static int sandbox;                         /* hidden frames (minimap capture): no host effects */
+static unsigned sandbox_pad;                /* buttons held during hidden frames */
 
 static void on_vblank(void)
 {
+    if (sandbox) return;
     if (att_on) {                            /* launcher background: plain 4:3 */
         static const vdp_render_opts plain = { 0, 0, 0 };
         vdp_render(fb, VDP_MAX_W, &plain);
@@ -223,6 +229,7 @@ static void on_vblank(void)
 
 static void on_frame(void)
 {
+    if (sandbox) { g_pad_buttons[0] = (uint16_t)sandbox_pad; cpu_frame_yield(); return; }
     if (att_on) g_pad_buttons[0] = 0;
     else if (!use_script) g_pad_buttons[0] = (uint16_t)pad_now;
     if (!att_on && !extracting && game && game->cheats && hud_ok &&
@@ -231,8 +238,10 @@ static void on_frame(void)
     cpu_frame_yield();
 }
 
+static jmp_buf sandbox_jmp;
 static void on_fatal(void)
 {
+    if (sandbox) longjmp(sandbox_jmp, 1);    /* hidden frames: abandon and restore */
     char msg[256];
     SDL_snprintf(msg, sizeof msg, "The game hit code that has not been recompiled (PC %06X, frame %llu).\n"
                  "Please report this along with what you were doing.", cpu_cur_pc, (unsigned long long)g_frame);
@@ -343,6 +352,7 @@ static const game_module *add_rom_dialog(void)
 #define ST_MAGIC   "DSHDST02"
 #define ST_HDR     (8 + 8 + 8 + THUMB_W * THUMB_H * 4)
 
+static int watch_reset = 1;                 /* re-baseline the status watcher (after loads, rewind) */
 static SDL_Texture *slot_tex[MENU_SLOTS];
 static int slot_known[MENU_SLOTS], slot_has[MENU_SLOTS];
 static char slot_when[MENU_SLOTS][32];
@@ -353,6 +363,7 @@ static void state_path(char *out, size_t n, int slot)
     SDL_snprintf(dir, sizeof dir, "%sstates", pref);
     SDL_CreateDirectory(dir);
     if (slot == 0) SDL_snprintf(out, n, "%s/%s_quick.state", dir, game->id);
+    else if (slot >= MENU_SAVE_SLOTS) SDL_snprintf(out, n, "%s/%s_auto%d.state", dir, game->id, slot - MENU_SAVE_SLOTS + 1);
     else SDL_snprintf(out, n, "%s/%s_slot%d.state", dir, game->id, slot);
 }
 
@@ -370,7 +381,7 @@ static void make_thumb(uint32_t *out)
         }
 }
 
-static void save_slot(int slot)
+static int write_state(int slot)
 {
     size_t n = cpu_state_size();
     uint8_t *b = SDL_calloc(1, ST_HDR + n);
@@ -386,6 +397,12 @@ static void save_slot(int slot)
     int ok = SDL_SaveFile(path, b, ST_HDR + n);
     SDL_free(b);
     slot_known[slot] = 0;
+    return ok;
+}
+
+static void save_slot(int slot)
+{
+    int ok = write_state(slot);
     char m[64];
     if (slot == 0) SDL_snprintf(m, sizeof m, ok ? "Quick saved" : "Could not save state");
     else SDL_snprintf(m, sizeof m, ok ? "Saved to slot %d" : "Could not save state", slot);
@@ -408,6 +425,8 @@ static int load_slot(int slot)
     SDL_free(b);
     if (ok) {
         if (aud) SDL_ClearAudioStream(aud);
+        rw_clear();
+        watch_reset = 1;
         say(slot ? "State loaded" : "Quick state loaded");
     } else {
         say("That state is from another version");
@@ -545,6 +564,7 @@ static void save_controls(void) { input_save(controls_path); }
 static void restart_game(void)
 {
     game_boot(game);
+    rw_clear();
     if (aud) SDL_ClearAudioStream(aud);
     say("Game restarted");
 }
@@ -643,6 +663,433 @@ static void draw_hud(void)
     }
 }
 
+/* ---------------- minimap (docs/11-minimap.md) ----------------
+ * The terrain is the pause map's own picture. When a level is first seen on
+ * the playfield, the game is run a few hidden frames from a saved state with
+ * Start pressed, the pause map is rendered without its icons and cropped to
+ * the playable world, and the state is restored; the picture is cached in
+ * <settings>/minimap/. The markers are live from the game (game->minimap). */
+int stbi_write_png(char const *filename, int w, int h, int comp, const void *data, int stride_in_bytes);
+
+static struct {
+    const game_module *game;
+    uint32_t level;               /* level the terrain belongs to */
+    int state;                    /* 0 not yet, 1 terrain ready, 2 capture failed */
+    int tries;
+    uint64_t retry_frame;
+    SDL_Texture *tex;
+    int r[4];                     /* crop on the pause screen, 1x px */
+    uint64_t name_until;          /* show the selected entry's name until (ns) */
+} mm;
+static game_minimap mmd;
+static int mmd_ok;
+static uint32_t mmfb[VDP_MAX_W * VDP_H];
+
+/* The playable world on the pause map, in 1x screen pixels. */
+static int mm_rect(const game_minimap *d, int r[4], int screen_w)
+{
+    const game_mm_view *v = game->mm_view;
+    int s = d->shift ? d->shift : v->shift, round = (1 << s) - 1;
+    int x0 = v->origin_x + (d->x0 >> s), y0 = v->origin_y + (d->y0 >> s);
+    int x1 = v->origin_x + ((d->x1 + round) >> s), y1 = v->origin_y + ((d->y1 + round) >> s);
+    if (x0 < 0) x0 = 0;
+    if (y0 < 0) y0 = 0;
+    if (x1 > screen_w) x1 = screen_w;
+    if (y1 > VDP_H) y1 = VDP_H;
+    r[0] = x0; r[1] = y0; r[2] = x1 - x0; r[3] = y1 - y0;
+    return r[2] >= 16 && r[3] >= 16;
+}
+
+static void drain_sound(void)
+{
+    static int16_t b[4096 * 2];
+    while (snd_read(b, 4096) > 0) {}
+}
+
+/* Hidden frames: open the pause map and grab its picture into out (r[2] x r[3]). */
+static int mm_capture(uint32_t *out, int r[4])
+{
+    const game_mm_view *v = game->mm_view;
+    size_t n = cpu_state_size();
+    uint8_t *st = SDL_malloc(n);
+    if (!st) return 0;
+    cpu_state_save(st);
+    uint32_t sa = v->sentinel & 0xFFFF;
+    g_ram[sa] = (uint8_t)~(v->sentinel_val >> 8);
+    g_ram[(sa + 1) & 0xFFFF] = (uint8_t)~v->sentinel_val;
+    if (v->page) {
+        g_ram[v->page & 0xFFFF] = (uint8_t)(v->page_map >> 8);
+        g_ram[(v->page + 1) & 0xFFFF] = (uint8_t)v->page_map;
+    }
+    static volatile int ok;
+    int stable = 0, have_prev = 0;
+    static uint32_t prev[VDP_MAX_W * VDP_H];
+    ok = 0;
+    sandbox = 1;
+    if (setjmp(sandbox_jmp)) { SDL_Log("minimap: the game stopped during the hidden frames"); goto restore; }
+    for (int k = 0; k < 240 && !ok; k++) {
+        sandbox_pad = k < 3 ? GB_START : 0;
+        cpu_run_frame();
+        drain_sound();
+        if ((g_ram[sa] << 8 | g_ram[(sa + 1) & 0xFFFF]) != v->sentinel_val) continue;
+        /* hide the icons: end the sprite list at an off-screen first entry */
+        uint32_t sat = (uint32_t)(g_vreg[5] & 0x7F) << 9;
+        for (int i = 0; i < 8; i++) g_vram[(sat + i) & 0xFFFF] = 0;
+        static const vdp_render_opts plain = { 0 };
+        vdp_render(mmfb, VDP_MAX_W, &plain);
+        int rr[4];
+        if (!mm_rect(&mmd, rr, vdp_display_width())) break;
+        int lit = 0, same = have_prev && rr[2] == r[2] && rr[3] == r[3];
+        for (int y = 0; y < rr[3]; y++)
+            for (int x = 0; x < rr[2]; x++) {
+                uint32_t c = mmfb[(rr[1] + y) * VDP_MAX_W + rr[0] + x];
+                if ((c & 0xF0F0F0) != 0) lit++;
+                if (same && prev[y * rr[2] + x] != c) same = 0;
+                prev[y * rr[2] + x] = c;
+            }
+        /* the pause screen fades in: wait for the palette to hold too */
+        static uint16_t prev_cram[64];
+        if (memcmp(prev_cram, g_cram, sizeof prev_cram)) { same = 0; memcpy(prev_cram, g_cram, sizeof prev_cram); }
+        memcpy(r, rr, sizeof rr);
+        have_prev = 1;
+        stable = same && lit > rr[2] * rr[3] / 4 ? stable + 1 : 0;
+        if (stable >= 12) {
+            for (int y = 0; y < r[3]; y++) memcpy(out + y * r[2], mmfb + (r[1] + y) * VDP_MAX_W + r[0], (size_t)r[2] * 4);
+            ok = 1;
+        }
+    }
+restore:
+    sandbox = 0;
+    sandbox_pad = 0;
+    cpu_state_load(st);
+    SDL_free(st);
+    drain_sound();
+    return ok;
+}
+
+static void mm_make_texture(const uint32_t *px, int w, int h)
+{
+    if (mm.tex) SDL_DestroyTexture(mm.tex);
+    mm.tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_XRGB8888, SDL_TEXTUREACCESS_STATIC, w, h);
+    if (!mm.tex) return;
+    SDL_UpdateTexture(mm.tex, 0, px, w * 4);
+    SDL_SetTextureScaleMode(mm.tex, SDL_SCALEMODE_NEAREST);
+    SDL_SetTextureBlendMode(mm.tex, SDL_BLENDMODE_BLEND);
+}
+
+/* At the frame boundary, before running frames: refresh the data and get the
+ * terrain for a newly seen level. */
+static void mm_update(void)
+{
+    mmd_ok = 0;
+    if (!game || !game->minimap || !game->mm_view || att_on || extracting || sandbox) return;
+    if (!hud_ok || !game->minimap(&mmd)) return;
+    mmd_ok = 1;                                  /* also feeds autosave and stats */
+    if (!g_set.minimap) return;
+    if (mm.game != game || mm.level != mmd.level) {
+        if (mm.tex) SDL_DestroyTexture(mm.tex);
+        memset(&mm, 0, sizeof mm);
+        mm.game = game;
+        mm.level = mmd.level;
+    }
+    if (mm.state == 1 || (mm.state == 2 && (mm.tries >= 3 || g_frame < mm.retry_frame))) return;
+    int r[4];
+    if (!mm_rect(&mmd, r, 320)) return;
+    char dir[1100], path[1200];
+    SDL_snprintf(dir, sizeof dir, "%sminimap", pref);
+    SDL_snprintf(path, sizeof path, "%s/%s_%06X.png", dir, game->id, (unsigned)mmd.level);
+    int w = 0, h = 0, comp;
+    size_t flen = 0;
+    void *file = SDL_LoadFile(path, &flen);
+    unsigned char *img = file ? stbi_load_from_memory(file, (int)flen, &w, &h, &comp, 4) : NULL;
+    SDL_free(file);
+    if (img && w == r[2] && h == r[3]) {
+        for (int i = 0; i < w * h; i++) {           /* RGBA bytes -> XRGB */
+            unsigned char *p = img + i * 4;
+            ((uint32_t *)img)[i] = 0xFF000000u | (uint32_t)p[0] << 16 | (uint32_t)p[1] << 8 | p[2];
+        }
+        mm_make_texture((uint32_t *)img, w, h);
+        stbi_image_free(img);
+        memcpy(mm.r, r, sizeof r);
+        mm.state = 1;
+        return;
+    }
+    if (img) stbi_image_free(img);
+    static uint32_t px[VDP_MAX_W * VDP_H];
+    uint64_t t0 = SDL_GetTicksNS();
+    int ok = mm_capture(px, r);
+    SDL_Log("minimap: %s level %06X terrain %s (%dx%d, %.0f ms)", game->id, (unsigned)mmd.level, ok ? "captured" : "not found",
+            r[2], r[3], (SDL_GetTicksNS() - t0) / 1e6);
+    if (!ok) { mm.state = 2; mm.tries++; mm.retry_frame = g_frame + 600; return; }
+    mm_make_texture(px, r[2], r[3]);
+    memcpy(mm.r, r, sizeof r);
+    mm.state = 1;
+    SDL_CreateDirectory(dir);
+    static uint8_t rgb[VDP_MAX_W * VDP_H * 3];
+    for (int i = 0; i < r[2] * r[3]; i++) {
+        rgb[i * 3] = (uint8_t)(px[i] >> 16); rgb[i * 3 + 1] = (uint8_t)(px[i] >> 8); rgb[i * 3 + 2] = (uint8_t)px[i];
+    }
+    stbi_write_png(path, r[2], r[3], 3, rgb, r[2] * 3);
+}
+
+/* Bumpers / Q E: step through the pause map's list. */
+static void mm_step(int dir)
+{
+    if (!g_set.minimap || !mmd_ok || !game->minimap_select || mmd.count <= 0) return;
+    int i = (mmd.sel + dir + mmd.count) % mmd.count;
+    game->minimap_select(i);
+    mmd.sel = i;
+    mm.name_until = SDL_GetTicksNS() + 2500000000ull;
+}
+
+static void mm_marker(float x, float y, float s, SDL_FColor c)   /* diamond with a dark edge */
+{
+    SDL_FColor k = ui_rgba(8, 10, 6, 230);
+    float e = s + 1.4f;
+    ui_triangle(x - e, y, x, y - e, x + e, y, k);
+    ui_triangle(x - e, y, x, y + e, x + e, y, k);
+    ui_triangle(x - s, y, x, y - s, x + s, y, c);
+    ui_triangle(x - s, y, x, y + s, x + s, y, c);
+}
+
+static void draw_minimap(void)
+{
+    if (!g_set.minimap || !mmd_ok || !hud_ok || menu_is_open() || !game || !game->mm_view) return;
+    const game_mm_view *v = game->mm_view;
+    int r[4];
+    if (mm.state == 1) memcpy(r, mm.r, sizeof r);
+    else if (!mm_rect(&mmd, r, 320)) return;
+    float x0, y0, x1, y1;
+    ui_to_virtual(game_dst.x, game_dst.y, &x0, &y0);
+    ui_to_virtual(game_dst.x + game_dst.w, game_dst.y + game_dst.h, &x1, &y1);
+    float u = (y1 - y0) / 720.0f;
+    if (u < 0.55f) u = 0.55f;
+    ui_font f = u < 1.25f ? UI_SMALL : UI_BODY;
+    static const float frac[3] = { 0.24f, 0.32f, 0.42f };
+    float mh = (y1 - y0) * frac[g_set.minimap_size];       /* map height */
+    float k = mh / r[3], mw = r[2] * k;
+    float maxw = (x1 - x0) * 0.38f;
+    if (mw > maxw) { k = maxw / r[2]; mw = maxw; mh = r[3] * k; }
+    float pad = 6 * u, lh = ui_line_h(f) * 0.92f;
+    float pw = mw + pad * 2, ph = mh + pad * 2 + lh;
+    float px = x0 + 14 * u, py = y1 - 12 * u - ph;
+    SDL_FColor edge = ui_rgba(196, 164, 98, 200), fill = ui_rgba(14, 17, 12, 170);
+    ui_panel(px, py, pw, ph, 8 * u, fill, edge);
+    float mx = px + pad, my = py + pad;
+    if (mm.state == 1 && mm.tex) {
+        SDL_SetTextureAlphaMod(mm.tex, 205);
+        ui_image(mm.tex, mx, my, mw, mh);
+    } else {
+        ui_rect(mx, my, mw, mh, ui_rgba(30, 36, 24, 150));
+    }
+    ui_frame(mx, my, mw, mh, 1, ui_rgba(196, 164, 98, 110));
+    /* world -> panel */
+    int sh = mmd.shift ? mmd.shift : v->shift;
+    #define MMX(wx) (mx + ((float)(v->origin_x + ((wx) >> sh) - r[0]) + 0.5f) * k)
+    #define MMY(wy) (my + ((float)(v->origin_y + ((wy) >> sh) - r[1]) + 0.5f) * k)
+    int blink = (SDL_GetTicks() / 250) & 1;
+    float ms = SDL_max(2.2f * u, k * 1.6f);
+    for (int i = 0; i < mmd.n; i++) {
+        const game_mm_mark *m = &mmd.m[i];
+        float ax = MMX(m->x), ay = MMY(m->y);
+        if (ax < mx || ay < my || ax > mx + mw || ay > my + mh) continue;
+        int sel = m->obj == mmd.sel;
+        SDL_FColor c = m->main ? (sel ? ui_rgba(255, 214, 72, 255) : ui_rgba(220, 96, 52, 255))
+                               : ui_rgba(120, 220, 230, 255);
+        if (sel && blink) c.a = 0.35f;                      /* the pause map blinks the selection */
+        mm_marker(ax, ay, sel ? ms * 1.25f : ms, c);
+    }
+    if (mmd.have_home) {
+        float hx = MMX(mmd.hx), hy = MMY(mmd.hy), s = ms * 0.9f;
+        ui_rect(hx - s - 1, hy - s - 1, s * 2 + 2, s * 2 + 2, ui_rgba(8, 10, 6, 230));
+        ui_rect(hx - s, hy - s, s * 2, s * 2, ui_rgba(90, 150, 230, 255));
+    }
+    if (mmd.have_player) {
+        float ax = MMX(mmd.px), ay = MMY(mmd.py), s = ms * 1.1f;
+        ui_rect(ax - s - 1.5f, ay - s - 1.5f, s * 2 + 3, s * 2 + 3, ui_rgba(8, 10, 6, 240));
+        ui_rect(ax - s, ay - s, s * 2, s * 2, ui_rgba(250, 250, 240, 255));
+    }
+    #undef MMX
+    #undef MMY
+    /* selected entry */
+    char name[64];
+    int st = game->minimap_name ? game->minimap_name(mmd.sel, name, sizeof name) : -1;
+    if (st >= 0) {
+        int fresh = SDL_GetTicksNS() < mm.name_until;
+        SDL_FColor c = fresh ? ui_rgba(255, 214, 72, 255) : ui_rgba(196, 164, 98, 255);
+        char line[80];
+        SDL_snprintf(line, sizeof line, "%s%s", name, st == 2 ? "  (?)" : "");
+        float ah = lh * 0.28f, ay = my + mh + pad * 0.5f + lh * 0.5f;    /* step arrows */
+        SDL_FColor ac = ui_rgba(196, 164, 98, 200);
+        ui_triangle(mx + ah * 0.4f, ay, mx + ah * 1.6f, ay - ah, mx + ah * 1.6f, ay + ah, ac);
+        ui_triangle(mx + mw - ah * 0.4f, ay, mx + mw - ah * 1.6f, ay - ah, mx + mw - ah * 1.6f, ay + ah, ac);
+        float tw = ui_text_w(f, line);
+        float tx = tw > mw - ah * 4 ? mx + ah * 2 : mx + (mw - tw) / 2;
+        ui_text(f, tx, my + mh + pad * 0.5f, c, line);
+    }
+}
+
+/* ---------------- status watcher: rumble, stats, autosave ----------------
+ * After the frames of each display update, compare the player status (the
+ * HUD values) and the objectives (the minimap data) with the last update. */
+static struct {
+    int ok;
+    game_hud h;
+    uint64_t last_frame;
+    uint32_t level;                 /* level seen last */
+    int level_frames;               /* frames flown on it */
+    int level_save;                 /* mission-start autosave pending */
+    int cnt[32], zero[32];          /* objective markers; frames at zero */
+    uint64_t stats_saved;
+} wt;
+
+static void rumble(float lo, float hi, int ms)
+{
+    if (g_set.rumble <= 0 || menu_is_open()) return;
+    float k = g_set.rumble / 100.0f;
+    input_rumble(lo * k, hi * k, ms);
+}
+
+static void autosave(const char *why)
+{
+    if (!g_set.autosave || !game) return;
+    char a[1024], b[1024];
+    for (int k = MENU_SLOTS - 1; k > MENU_SAVE_SLOTS; k--) {   /* Auto 1 -> 2 -> 3 */
+        state_path(a, sizeof a, k - 1);
+        state_path(b, sizeof b, k);
+        SDL_RemovePath(b);
+        SDL_RenamePath(a, b);
+        slot_known[k] = 0;
+    }
+    int ok = write_state(MENU_SAVE_SLOTS);
+    char m[96];
+    SDL_snprintf(m, sizeof m, ok ? "Autosaved: %s" : "Autosave failed (%s)", why);
+    say(m);
+}
+
+static void watch_objectives(game_stats *s, int df)
+{
+    if (!mmd_ok) return;
+    int n = mmd.count < 32 ? mmd.count : 32, cnt[32] = { 0 };
+    for (int i = 0; i < mmd.n; i++) if (mmd.m[i].main && mmd.m[i].obj < 32) cnt[mmd.m[i].obj]++;
+    if (mmd.level != wt.level) {                 /* a new level: a mission starts */
+        wt.level = mmd.level;
+        wt.level_frames = 0;
+        wt.level_save = !watch_reset;            /* not when it came from a loaded state */
+        if (wt.level_save) s->missions++;
+        memcpy(wt.cnt, cnt, sizeof cnt);
+        memset(wt.zero, 0, sizeof wt.zero);
+    }
+    if (mmd.campaign > s->best_campaign) s->best_campaign = mmd.campaign;
+    wt.level_frames += df;
+    if (wt.level_save && wt.level_frames >= 120) { wt.level_save = 0; autosave("mission start"); }
+    for (int i = 0; i < n; i++) {
+        if (cnt[i] > 0) { wt.cnt[i] = cnt[i]; wt.zero[i] = 0; continue; }
+        if (wt.cnt[i] <= 0) continue;
+        char name[64];
+        if (game->minimap_name(i, name, sizeof name) != 0) { wt.cnt[i] = 0; continue; }
+        if ((wt.zero[i] += df) < 45) continue;   /* gone for good, not a flicker */
+        wt.cnt[i] = 0;
+        s->objectives++;
+        char why[96];
+        SDL_snprintf(why, sizeof why, "%s complete", name);
+        autosave(why);
+    }
+}
+
+static void watch_frame(void)
+{
+    if (!game || att_on || extracting || sandbox || !game->hud) return;
+    game_hud h;
+    if (!hud_ok || !game->hud(&h)) { wt.ok = 0; return; }
+    game_stats *s = stats_for(game->id);
+    int df = (int)(g_frame - wt.last_frame);
+    wt.last_frame = g_frame;
+    if (watch_reset || !wt.ok || df <= 0 || df > 30) {
+        wt.h = h;
+        wt.ok = 1;
+        if (watch_reset && mmd_ok) {             /* baseline: no autosave for this level */
+            wt.level = mmd.level;
+            wt.level_save = 0;
+            for (int i = 0; i < 32; i++) wt.cnt[i] = wt.zero[i] = 0;
+            for (int i = 0; i < mmd.n; i++) if (mmd.m[i].main && mmd.m[i].obj < 32) wt.cnt[mmd.m[i].obj]++;
+        }
+        watch_reset = 0;
+        return;
+    }
+    s->play_seconds += df / 60.0;
+    if (h.lives < wt.h.lives) {
+        s->lives_lost++;
+        rumble(1.0f, 1.0f, 700);
+    } else {
+        int dmg = wt.h.armor - h.armor;
+        if (dmg > 0 && dmg < 5000) {
+            s->damage += dmg;
+            float k = (float)dmg / (h.armor_max > 0 ? h.armor_max : 600);
+            rumble(0.35f + k * 4, 0.25f + k * 4, 140 + (int)(k * 800));
+        }
+    }
+    static const float fire_lo[3] = { 0.0f, 0.25f, 0.6f }, fire_hi[3] = { 0.22f, 0.45f, 0.8f };
+    static const int fire_ms[3] = { 45, 90, 180 };
+    for (int i = 0; i < 3; i++) {
+        int d = wt.h.ammo[i] - h.ammo[i];
+        if (wt.h.ammo[i] < 0 || h.ammo[i] < 0 || d <= 0 || d > 50) continue;
+        s->shots[i] += d;
+        rumble(fire_lo[i], fire_hi[i], fire_ms[i]);
+    }
+    if (h.load > wt.h.load) s->picked_up += h.load - wt.h.load;
+    else if (h.load < wt.h.load && h.lives == wt.h.lives) s->delivered += wt.h.load - h.load;
+    wt.h = h;
+    watch_objectives(s, df);
+    if (g_frame - wt.stats_saved > 60 * 60) { wt.stats_saved = g_frame; stats_save(stats_path); }
+}
+
+/* Stats page lines ("label\tvalue"). */
+static void fmt_time(char *b, size_t n, double sec)
+{
+    int m = (int)(sec / 60);
+    if (m >= 60) SDL_snprintf(b, n, "%dh %02dm", m / 60, m % 60);
+    else SDL_snprintf(b, n, "%dm %02ds", m, (int)sec % 60);
+}
+static int stats_lines(char (*l)[96], int max)
+{
+    if (!game || max < 10) return 0;
+    const game_stats *s = stats_for(game->id);
+    char t[32];
+    int k = 0;
+    fmt_time(t, sizeof t, s->play_seconds);
+    SDL_snprintf(l[k++], 96, "Time flying\t%s", t);
+    SDL_snprintf(l[k++], 96, "Missions started\t%d", s->missions);
+    SDL_snprintf(l[k++], 96, "Furthest campaign\t%d", s->best_campaign);
+    SDL_snprintf(l[k++], 96, "Objectives completed\t%d", s->objectives);
+    SDL_snprintf(l[k++], 96, "Rescued / unloaded\t%d", s->delivered);
+    SDL_snprintf(l[k++], 96, "Winched aboard\t%d", s->picked_up);
+    SDL_snprintf(l[k++], 96, "Gun rounds fired\t%d", s->shots[0]);
+    SDL_snprintf(l[k++], 96, "Hydras / Hellfires fired\t%d / %d", s->shots[1], s->shots[2]);
+    SDL_snprintf(l[k++], 96, "Armor lost\t%d", s->damage);
+    SDL_snprintf(l[k++], 96, "Lives lost\t%d", s->lives_lost);
+    return k;
+}
+
+/* ---------------- rewind ---------------- */
+static int rewinding;
+static uint8_t *rw_state;
+
+static void rewind_record(void)                  /* after each frame: every 2nd frame */
+{
+    if (!g_set.rewind || !rw_state || g_frame & 1) return;
+    cpu_state_save(rw_state);
+    rw_push(rw_state);
+}
+
+static int rewind_step(void)                     /* one step back; 0 at the start of the history */
+{
+    if (!rw_state || !rw_pop(rw_state) || !cpu_state_load(rw_state)) return 0;
+    drain_sound();
+    on_vblank();                                 /* picture of the restored moment */
+    return 1;
+}
+
 static void draw_game(int ow, int oh)
 {
     int S = 1;
@@ -729,6 +1176,17 @@ static void present(void)
     draw_game(ow, oh);
     ui_begin(ow, oh);
     draw_hud();
+    draw_minimap();
+    if (rewinding) {
+        int blink = (SDL_GetTicks() / 400) & 1;
+        float w = ui_text_w(UI_BODY, "REWIND") + 70;
+        ui_panel(640 - w / 2, 18, w, 44, 8, ui_rgba(14, 17, 12, 190), ui_rgba(196, 164, 98, 200));
+        SDL_FColor c = ui_rgba(242, 178, 58, blink ? 255 : 170);
+        float tx = 640 - w / 2 + 16;
+        ui_triangle(tx + 12, 30, tx, 40, tx + 12, 50, c);
+        ui_triangle(tx + 24, 30, tx + 12, 40, tx + 24, 50, c);
+        ui_text(UI_BODY, tx + 34, 24, c, "REWIND");
+    }
     if (menu_is_open()) menu_draw(ow, oh);
     ui_begin(ow, oh);
     if (osd[0] && SDL_GetTicksNS() < osd_until) {
@@ -1015,6 +1473,15 @@ static void sel_draw(sel_hit *hits, int *nh)
         ui_text_center(UI_BODY, x + cw / 2, y + 108, have ? ui_rgba(150, 220, 120, 255) : ui_rgba(230, 150, 90, 255),
                        have ? (f ? "PRESS TO PLAY" : "READY") : "ROM NOT FOUND");
         if (!have && f) ui_text_center(UI_SMALL, x + cw / 2, y + 138, ui_rgba(150, 148, 132, 255), "Select to add your ROM");
+        if (have) {                              /* career line */
+            const game_stats *gs = stats_for(g->id);
+            if (gs->play_seconds >= 1) {
+                char tm[32], st[96];
+                fmt_time(tm, sizeof tm, gs->play_seconds);
+                SDL_snprintf(st, sizeof st, "%s flown  -  campaign %d  -  %d objective%s", tm, gs->best_campaign ? gs->best_campaign : 1, gs->objectives, gs->objectives == 1 ? "" : "s");
+                ui_text_center(UI_SMALL, x + cw / 2, y + 138, ui_rgba(150, 148, 132, 255), st);
+            }
+        }
         if (att.cur == i && att.phase >= 2) {
             float a = att.alpha;
             ui_rect(x + cw - 30, y + ch - 22, 10, 10, ui_rgba(214, 74, 52, (int)(255 * a * (0.6f + 0.4f * SDL_sinf(t * 6)))));
@@ -1059,6 +1526,9 @@ static int sel_activate(void)
 }
 
 static long long max_ticks, tick;
+static long long rw_test_at = -1, rw_test_n;     /* --rewind-at T:N (test) */
+static struct { long long t; uint32_t a; uint16_t v; } pokes[16];   /* --poke T:addr:value (test, RAM word) */
+static int npokes;
 static timed_t keys[64], shots[64];
 static int nkeys, nshots;
 
@@ -1213,7 +1683,8 @@ static void make_hd_pack(void)
     game_boot(game);
     load_hd_pack();
     if (aud) SDL_ClearAudioStream(aud);
-    say(ok ? "HD pack built" : "HD pack build cancelled");
+    say(ok == 2 ? "HD pack built with xBRZ: the AI upscaler needs a Vulkan graphics card"
+               : ok ? "HD pack built" : "HD pack build cancelled");
 }
 
 /*
@@ -1344,7 +1815,18 @@ static int upscale_dump(const char *dump, const char *pack)
 #endif
     SDL_PathInfo info;
     if (SDL_GetPathInfo(exe, &info) && info.type == SDL_PATHTYPE_FILE) {
-        const char *args[] = { exe, dump, pack, NULL };
+        /* AI style: Real-ESRGAN (ncnn/Vulkan) in <exe dir>/ai/ */
+        char ai[1100];
+#ifdef _WIN32
+        SDL_snprintf(ai, sizeof ai, "%sai\\realesrgan-ncnn-vulkan.exe", base ? base : "");
+#else
+        SDL_snprintf(ai, sizeof ai, "%sai/realesrgan-ncnn-vulkan", base ? base : "");
+#endif
+        int use_ai = g_set.hd_style == 1 && SDL_GetPathInfo(ai, &info) && info.type == SDL_PATHTYPE_FILE;
+        const char *args[] = { exe, dump, pack, use_ai ? "--ai" : NULL, ai, NULL };
+        char prog[1200];
+        SDL_snprintf(prog, sizeof prog, "%sprogress.txt", pack);
+        SDL_RemovePath(prog);
         SDL_PropertiesID props = SDL_CreateProperties();
         SDL_SetPointerProperty(props, SDL_PROP_PROCESS_CREATE_ARGS_POINTER, (void *)args);
         SDL_SetNumberProperty(props, SDL_PROP_PROCESS_CREATE_STDOUT_NUMBER, SDL_PROCESS_STDIO_NULL);
@@ -1354,11 +1836,32 @@ static int upscale_dump(const char *dump, const char *pack)
         if (pr) {
             int code = -1;
             float t = 0;
-            while (!SDL_WaitProcess(pr, false, &code)) {
-                job_progress("Building HD pack", "Upscaling with xBRZ...", SDL_fmodf(t += 0.01f, 1.0f));
+            (void)t;
+            char line[160] = "Upscaling...";
+            float frac = 0;
+            for (int k = 0; !SDL_WaitProcess(pr, false, &code); k++) {
+                if (k % 10 == 0) {                   /* "<done> <total> <message>" */
+                    char *txt = SDL_LoadFile(prog, NULL);
+                    int d = 0, n = 0, off = 0;
+                    if (txt && SDL_sscanf(txt, "%d %d %n", &d, &n, &off) >= 2 && n > 0) {
+                        char *nl = SDL_strchr(txt + off, '\n');
+                        if (nl) *nl = 0;
+                        int ai_phase = SDL_strstr(txt + off, "AI") != NULL;
+                        SDL_snprintf(line, sizeof line, "%s: %d of %d%s", txt + off, d, n, ai_phase ? " (uses your graphics card)" : "");
+                        frac = use_ai ? (ai_phase ? 0.3f + 0.7f * d / n : 0.3f * d / n) : (float)d / n;
+                    }
+                    SDL_free(txt);
+                }
+                if (!job_progress("Building HD pack", line, SDL_min(frac, 0.99f))) {
+                    SDL_KillProcess(pr, true);
+                    SDL_WaitProcess(pr, true, &code);
+                    SDL_DestroyProcess(pr);
+                    return 0;                        /* cancelled */
+                }
                 SDL_Delay(30);
             }
             SDL_DestroyProcess(pr);
+            if (code == 3) return 2;                 /* AI couldn't run: xBRZ pack */
             if (code == 0) return 1;
         }
     }
@@ -1372,6 +1875,7 @@ static void restart_campaign(void)
     if (!game) return;
     g_start_campaign = g_cheat.campaign;
     game_boot(game);
+    rw_clear();
     if (aud) SDL_ClearAudioStream(aud);
     menu_close();
     char m[96];
@@ -1428,17 +1932,38 @@ static void run_game(void)
             if (input_pressed(ACT_PAUSE)) { user_paused = !user_paused; say(user_paused ? "Paused" : "Resumed"); }
             if (input_pressed(ACT_SAVE_STATE)) save_slot(0);
             if (input_pressed(ACT_LOAD_STATE)) load_slot(0);
+            if (input_pressed(ACT_MM_NEXT)) mm_step(1);
+            if (input_pressed(ACT_MM_PREV)) mm_step(-1);
             pad_now = input_pad_state();
         }
 
         int halted = menu_is_open() || user_paused || (!focused && g_set.pause_unfocused && !max_ticks);
         uint64_t now = SDL_GetTicksNS();
         int ff = !halted && input_held(ACT_FAST_FORWARD);
+        int rw = !halted && g_set.rewind && (input_held(ACT_REWIND) || (max_ticks && tick >= rw_test_at && tick < rw_test_at + rw_test_n));
+        if (!halted && !rw) mm_update();
+        if (rw != rewinding) {                   /* entering or leaving rewind */
+            rewinding = rw;
+            if (aud) SDL_ClearAudioStream(aud);
+            watch_reset = 1;
+            next = now;
+        }
         if (halted) {
             next = now;
+        } else if (rw) {
+            if (max_ticks || now >= next) {       /* one step per display frame at 60 Hz */
+                rewind_step();
+                next += FRAME_NS;
+                if (now > next + 250000000ull) next = now;
+            }
         } else if (max_ticks) {
+            for (int k = 0; k < npokes; k++) if (pokes[k].t == tick) {
+                g_ram[pokes[k].a & 0xFFFF] = (uint8_t)(pokes[k].v >> 8);
+                g_ram[(pokes[k].a + 1) & 0xFFFF] = (uint8_t)pokes[k].v;
+            }
             cpu_run_frame();                     /* test mode: as fast as possible */
             pump_audio(0);
+            rewind_record();
             if (shot_every && g_frame % shot_every == 0) save_bmp(shot_dir);
         } else {
             int ran = 0, maxrun = ff ? g_set.ff_speed : 4;
@@ -1446,10 +1971,12 @@ static void run_game(void)
             while (now >= next && ran < maxrun) {
                 cpu_run_frame();
                 pump_audio(!ff);
+                rewind_record();
                 next += ff ? FRAME_NS / g_set.ff_speed : FRAME_NS;
                 ran++;
             }
         }
+        if (!halted && !rw) watch_frame();
         present();
         after_present();
         disp_frames++;
@@ -1484,6 +2011,15 @@ int main(int argc, char **argv)
             g_cheat.ammo = !!SDL_strchr(c, 'a'); g_cheat.lives = !!SDL_strchr(c, 'l');
         }
         else if (!strcmp(argv[i], "--campaign") && i + 1 < argc) g_start_campaign = SDL_atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--poke") && i + 1 < argc && npokes < 16) {
+            unsigned long long t = 0; unsigned a = 0, v = 0;
+            if (SDL_sscanf(argv[++i], "%llu:%x:%x", &t, &a, &v) == 3) { pokes[npokes].t = (long long)t; pokes[npokes].a = a; pokes[npokes].v = (uint16_t)v; npokes++; }
+        }
+        else if (!strcmp(argv[i], "--rewind-at") && i + 1 < argc) {
+            rw_test_at = SDL_strtoll(argv[++i], 0, 10);
+            const char *c = SDL_strchr(argv[i], ':');
+            rw_test_n = c ? SDL_strtoll(c + 1, 0, 10) : 60;
+        }
         else if (!strcmp(argv[i], "--shot-every") && i + 2 < argc) { shot_every = SDL_atoi(argv[++i]); shot_dir = argv[++i]; }
         else if (!strcmp(argv[i], "--inputs") && i + 1 < argc) script = argv[++i];
         else if ((!strcmp(argv[i], "--key") || !strcmp(argv[i], "--screen-shot")) && i + 1 < argc) {
@@ -1508,6 +2044,10 @@ int main(int argc, char **argv)
     SDL_snprintf(controls_path, sizeof controls_path, "%scontrols.ini", pref);
     if (!settings_load(settings_path)) settings_save(settings_path);
     if (!input_load(controls_path)) input_save(controls_path);
+    SDL_snprintf(stats_path, sizeof stats_path, "%sstats.ini", pref);
+    stats_load(stats_path);
+    rw_init(cpu_state_size(), 48u << 20);
+    rw_state = SDL_malloc(cpu_state_size());
 
     win = SDL_CreateWindow(APP_TITLE, g_set.window_w, g_set.window_h, SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
     ren = win ? SDL_CreateRenderer(win, 0) : 0;
@@ -1533,6 +2073,7 @@ int main(int argc, char **argv)
         .open_settings_folder = open_settings_folder,
         .make_hd_pack = make_hd_pack,
         .campaign_count = menu_campaigns, .restart_campaign = restart_campaign,
+        .stats_lines = stats_lines,
     };
     menu_init(&mh);
     input_init();
@@ -1557,13 +2098,18 @@ int main(int argc, char **argv)
         pick = -1;
         if (gi < 0 || !running) break;
         if (!start_game(gi)) continue;
+        rw_clear();
+        watch_reset = 1;
+        memset(&wt, 0, sizeof wt);
         if (opt_make_pack) make_hd_pack();
         run_game();
+        stats_save(stats_path);
         if (switch_requested) { switch_requested = 0; game = 0; sel_row = 0; sel_col = gi; }
     }
 
     settings_save(settings_path);
     input_save(controls_path);
+    stats_save(stats_path);
     ui_shutdown();
     if (pool.done) pool_stop();
     if (SDL_getenv("DS_PROFILE") && render_frames) SDL_Log("render: %.2f ms/frame over %llu frames", render_ns / 1e6 / render_frames, (unsigned long long)render_frames);

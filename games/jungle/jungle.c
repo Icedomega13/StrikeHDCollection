@@ -16,6 +16,20 @@ static int hud(game_hud *h) { return strike_hud(&hcfg, h); }
 static int tour(int reset, int play) { return strike_tour(&hcfg, reset, play); }
 static void cheats(int g, int f, int a, int l) { strike_cheats(&hcfg, g, f, a, l); }
 
+/* Minimap: the pause map's list and icon builder ($039906, $0399B6,
+ * $039784), its world-to-map transform ($039726: world/32 + (56, 48)). */
+static const strike_mm_cfg mcfg = {
+    1, 0xFF1042, 0xFF104C, 0xFF1084, 0xFF10DA, 1,
+    0xFF391E, 0xFF12C6, 0xFFFBA6, 0xFF12C8,
+    0xFF29E8, 0x22, 0, 0, 0, 0,
+    0xFF283C, 0xFF133C,
+    0x0EBF84, 0xFF139E, 1,
+};
+static const game_mm_view mview = { 56, 48, 5, 0xFF048A, 8, 0xFF104E, 2 };
+static int minimap(game_minimap *o) { return strike_minimap(&mcfg, o); }
+static void minimap_select(int i) { strike_minimap_select(&mcfg, i); }
+static int minimap_name(int i, char *b, int n) { return strike_minimap_name(&mcfg, i, b, n); }
+
 const game_module game_jungle = {
     .id = "jungle",
     .title = "Jungle Strike",
@@ -29,4 +43,8 @@ const game_module game_jungle = {
     .tour = tour,
     .cheats = cheats,
     .campaigns = 9,
+    .minimap = minimap,
+    .minimap_select = minimap_select,
+    .minimap_name = minimap_name,
+    .mm_view = &mview,
 };

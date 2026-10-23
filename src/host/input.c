@@ -9,6 +9,7 @@ bindings g_bind;
 static const char *act_names[ACT_COUNT] = {
     "up", "down", "left", "right", "a", "b", "c", "start",
     "save_state", "load_state", "fullscreen", "fast_forward", "pause", "menu",
+    "objective_next", "objective_prev", "rewind",
 };
 
 const char *action_name(action a) { return act_names[a]; }
@@ -61,9 +62,9 @@ void input_defaults(bindings *b)
     set(b, ACT_LEFT,  SDL_SCANCODE_LEFT,  SDL_SCANCODE_A, SDL_GAMEPAD_BUTTON_DPAD_LEFT,  PAD_AXIS(SDL_GAMEPAD_AXIS_LEFTX, 0));
     set(b, ACT_RIGHT, SDL_SCANCODE_RIGHT, SDL_SCANCODE_D, SDL_GAMEPAD_BUTTON_DPAD_RIGHT, PAD_AXIS(SDL_GAMEPAD_AXIS_LEFTX, 1));
     /* Genesis A B C sit left to right, like west / south / east on a modern pad */
-    set(b, ACT_A, SDL_SCANCODE_J, SDL_SCANCODE_Z, SDL_GAMEPAD_BUTTON_WEST,  SDL_GAMEPAD_BUTTON_LEFT_SHOULDER);
+    set(b, ACT_A, SDL_SCANCODE_J, SDL_SCANCODE_Z, SDL_GAMEPAD_BUTTON_WEST,  PAD_NONE);
     set(b, ACT_B, SDL_SCANCODE_K, SDL_SCANCODE_X, SDL_GAMEPAD_BUTTON_SOUTH, PAD_NONE);
-    set(b, ACT_C, SDL_SCANCODE_L, SDL_SCANCODE_C, SDL_GAMEPAD_BUTTON_EAST,  SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER);
+    set(b, ACT_C, SDL_SCANCODE_L, SDL_SCANCODE_C, SDL_GAMEPAD_BUTTON_EAST,  PAD_NONE);
     set(b, ACT_START, SDL_SCANCODE_RETURN, SDL_SCANCODE_UNKNOWN, SDL_GAMEPAD_BUTTON_START, PAD_NONE);
     set(b, ACT_SAVE_STATE, SDL_SCANCODE_F5, SDL_SCANCODE_UNKNOWN, PAD_NONE, PAD_NONE);
     set(b, ACT_LOAD_STATE, SDL_SCANCODE_F7, SDL_SCANCODE_UNKNOWN, PAD_NONE, PAD_NONE);
@@ -71,6 +72,9 @@ void input_defaults(bindings *b)
     set(b, ACT_FAST_FORWARD, SDL_SCANCODE_TAB, SDL_SCANCODE_UNKNOWN, PAD_AXIS(SDL_GAMEPAD_AXIS_RIGHT_TRIGGER, 1), PAD_NONE);
     set(b, ACT_PAUSE, SDL_SCANCODE_P, SDL_SCANCODE_PAUSE, PAD_NONE, PAD_NONE);
     set(b, ACT_MENU, SDL_SCANCODE_ESCAPE, SDL_SCANCODE_UNKNOWN, SDL_GAMEPAD_BUTTON_BACK, PAD_NONE);
+    set(b, ACT_MM_NEXT, SDL_SCANCODE_E, SDL_SCANCODE_UNKNOWN, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, PAD_NONE);
+    set(b, ACT_MM_PREV, SDL_SCANCODE_Q, SDL_SCANCODE_UNKNOWN, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, PAD_NONE);
+    set(b, ACT_REWIND, SDL_SCANCODE_BACKSPACE, SDL_SCANCODE_UNKNOWN, PAD_AXIS(SDL_GAMEPAD_AXIS_LEFT_TRIGGER, 1), PAD_NONE);
     b->stick_deadzone = 12000;
 }
 
@@ -88,6 +92,7 @@ int input_load(const char *path)
     input_defaults(&g_bind);
     FILE *f = fopen(path, "r");
     if (!f) return 0;
+    int seen_mm = 0;
     char line[512], section[32] = "";
     while (fgets(line, sizeof line, f)) {
         char *s = trim(line);
@@ -108,6 +113,7 @@ int input_load(const char *path)
         int a = -1;
         for (int i = 0; i < ACT_COUNT; i++) if (!strcmp(key, act_names[i])) a = i;
         if (a < 0) continue;
+        if (a == ACT_MM_NEXT || a == ACT_MM_PREV) seen_mm = 1;
         int is_kb = !strcmp(section, "keyboard"), is_pad = !strcmp(section, "gamepad");
         if (!is_kb && !is_pad) continue;
         /* a listed action replaces its defaults; an empty value unbinds it */
@@ -129,6 +135,14 @@ int input_load(const char *path)
         }
     }
     fclose(f);
+    /* Files from before the minimap had LB / RB as second A / C buttons;
+     * they now step through the objectives. */
+    if (!seen_mm) {
+        for (int a = ACT_A; a <= ACT_C; a++)
+            for (int i = 0; i < MAX_BINDS; i++)
+                if (g_bind.pad[a][i] == SDL_GAMEPAD_BUTTON_LEFT_SHOULDER || g_bind.pad[a][i] == SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER)
+                    g_bind.pad[a][i] = PAD_NONE;
+    }
     return 1;
 }
 
@@ -372,4 +386,14 @@ unsigned input_pad_state(void)
     if ((s & (GB_UP | GB_DOWN)) == (GB_UP | GB_DOWN)) s &= ~(unsigned)(GB_UP | GB_DOWN);
     if ((s & (GB_LEFT | GB_RIGHT)) == (GB_LEFT | GB_RIGHT)) s &= ~(unsigned)(GB_LEFT | GB_RIGHT);
     return s;
+}
+
+void input_rumble(float lo, float hi, int ms)
+{
+    if (lo < 0) lo = 0;
+    if (lo > 1) lo = 1;
+    if (hi < 0) hi = 0;
+    if (hi > 1) hi = 1;
+    for (int i = 0; i < MAX_PADS; i++)
+        if (pads[i]) SDL_RumbleGamepad(pads[i], (Uint16)(lo * 65535), (Uint16)(hi * 65535), (Uint32)ms);
 }

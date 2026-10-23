@@ -36,7 +36,13 @@ The pack loads when the game starts. A message shows how many graphics it holds 
    - It uses the 32:9 view, so units across the map wake up and get drawn.
    - Every new pattern and sprite is dumped. Every 8 frames, the visible ground and overlay cells are also written as **context sheets** (`ctx_*.png`/`.txt`). These let the upscaler see each pattern among its real neighbours, so ground tiles come out without seams.
 2. **Upscale.** `hdpack_xbrz.exe` (next to the game) scales every dumped image 4× with **xBRZ**, the edge-aware pixel-art scaler used by emulators. It's a separate program because xBRZ is GPL-3; its licence ships as `hdpack_xbrz-LICENSE.txt`, and the game itself contains no GPL code. If the tool is missing, the built-in Scale2x is used instead.
-3. **Load.** The result goes to `packs/<game>/` and loads immediately.
+3. **AI pass (Settings → System → HD Pack Style: AI, the default).** When `ai/realesrgan-ncnn-vulkan.exe` is next to the game, the sprite and context sheets are redone with **Real-ESRGAN** (`realesrgan-x4plus-anime` model; ncnn on Vulkan, BSD-3, a separate program that runs on the graphics card).
+   - Its colours are used with the xBRZ alpha, so transparent edges stay crisp.
+   - Transparent pixels are filled from their neighbours, and sheets are padded 8 px, so edges get no halo.
+   - Single patterns keep xBRZ: sheets load first, so the AI art wins wherever a pattern appears in a sheet.
+   - Without a Vulkan GPU the program can't run; the xBRZ pack is kept (exit code 3) and the game says so.
+   - Progress is shown from `<pack>/progress.txt`. `hdpack_xbrz <dump> <pack> --ai <exe> [-m models] [--model name]` runs it by hand; `realesr-animevideov3-x4` is also included as an alternative model.
+4. **Load.** The result goes to `packs/<game>/` and loads immediately.
 
 The same extraction runs headless with `StrikeCollectionHD --extract [campaign]`, for all games with ROMs. The tool also runs on its own: `hdpack_xbrz <dump dir> <pack dir> [-s 2..6]`.
 

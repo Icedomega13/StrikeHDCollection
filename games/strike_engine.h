@@ -163,4 +163,37 @@ static inline void strike_cheats(const strike_hud_cfg *c, int god, int fuel, int
 
 int strike_ws_world(const strike_cfg *c, vdp_world_plane out[2], int ext_left, int ext_right);
 
+/*
+ * Minimap (games/strike_minimap.c, docs/11-minimap.md): the pause map's list
+ * of objectives and categories, and the units each one marks, found the way
+ * the pause map's own icon builder finds them.
+ */
+typedef struct {
+    int kind;                  /* unit-list layout: 0 Desert, 1 Jungle, 2 Urban */
+    uint32_t obj_tab;          /* RAM: pointer to the list (word count, 12-byte entries) */
+    uint32_t sel;              /* RAM word: selected entry */
+    uint32_t unlocked;         /* RAM long: bit n-1 set = objective n available */
+    uint32_t done_tab;         /* RAM words: negative = objective completed */
+    int group_mul;             /* units of objective i carry group (i+1)*group_mul */
+    uint32_t list1, list1_n;   /* static objects: first entry, count word */
+    uint32_t list2, list2_n;   /* units: last entry (list grows down), count word */
+    uint32_t player_ptr;       /* pointer to the player's vehicle */
+    uint16_t pos_off;          /* vehicle: pointer to its position (+0 x, +4 y) */
+    uint32_t home_flag1, home_flag2, home_ptr;   /* home-base icon (0 = none) */
+    uint32_t carried;          /* Desert: list checked for entries with flag bit 1 */
+    uint32_t level_ptr;        /* level descriptor pointer (cache key) */
+    uint32_t ground_rec;       /* ground layer record (camera clamp at +$30) */
+    /* Jungle/Urban set obj_tab and the unlocked mask only when the pause
+     * screen opens; these compute them the same way while flying. */
+    uint32_t tab_rom;          /* ROM: list pointer per campaign (0 = use obj_tab) */
+    uint32_t campaign;         /* RAM word: campaign number */
+    int mask_from_tab;         /* unlocked mask from done_tab: 1 sequential when level+$22 bit 1
+                                  (Jungle $03A9C6, Urban $0037E0); 2 when campaign = 3 (Desert $005102) */
+    uint32_t shift_rom;        /* ROM: map scale word per campaign (0 = 5) */
+} strike_mm_cfg;
+
+int  strike_minimap(const strike_mm_cfg *c, game_minimap *out);
+void strike_minimap_select(const strike_mm_cfg *c, int index);
+int  strike_minimap_name(const strike_mm_cfg *c, int index, char *buf, int n);
+
 #endif

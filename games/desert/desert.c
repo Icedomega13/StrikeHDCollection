@@ -21,6 +21,20 @@ static int hud(game_hud *h) { return strike_hud(&hcfg, h); }
 static int tour(int reset, int play) { return strike_tour(&hcfg, reset, play); }
 static void cheats(int g, int f, int a, int l) { strike_cheats(&hcfg, g, f, a, l); }
 
+/* Minimap (docs/11-minimap.md): the pause map's list and icon builder ($003EBC, $003F6C,
+ * $003D1A), its world-to-map transform ($003CCC: world/32 + (80, 40)). */
+static const strike_mm_cfg mcfg = {
+    0, 0xFF1030, 0xFF103A, 0xFF1070, 0xFF10C2, 2,
+    0xFF2718, 0xFF1A34, 0xFFFBA8, 0xFF1A36,
+    0xFF251C, 0x28, 0xFF268A, 0xFF1A26, 0xFF269C, 0xFF2522,
+    0xFF24BA, 0xFF1AA8,
+    0x03018C, 0xFF1B10, 2,     /* list and mask are set when the pause opens ($005094) */
+};
+static const game_mm_view mview = { 80, 40, 5, 0xFF0286, 8, 0xFF103C, 2 };
+static int minimap(game_minimap *o) { return strike_minimap(&mcfg, o); }
+static void minimap_select(int i) { strike_minimap_select(&mcfg, i); }
+static int minimap_name(int i, char *b, int n) { return strike_minimap_name(&mcfg, i, b, n); }
+
 const game_module game_desert = {
     .id = "desert",
     .title = "Desert Strike: Return to the Gulf",
@@ -34,4 +48,8 @@ const game_module game_desert = {
     .tour = tour,
     .cheats = cheats,
     .campaigns = 4,
+    .minimap = minimap,
+    .minimap_select = minimap_select,
+    .minimap_name = minimap_name,
+    .mm_view = &mview,
 };

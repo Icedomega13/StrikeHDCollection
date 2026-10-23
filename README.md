@@ -6,8 +6,10 @@ Native PC versions of the three Sega Genesis Strike games: *Desert Strike: Retur
 - **Widescreen**: 16:10, 16:9, 21:9 and 32:9, plus "Match window". The battlefield is drawn from each game's own map data beyond the console's 512-pixel limit. Menus, maps and cutscenes stay 4:3.
 - **HD graphics packs**, with a one-click builder. The game extracts its own graphics, upscales them 4× with xBRZ (keeping dithered textures crisp), and loads the result.
 - **Status HUD**: armor, fuel, load, lives and ammo.
+- **Minimap**: the pause map in the corner, live, with the objectives; LB / RB (Q / E) step through them like the pause menu.
 - **Pause menu**: save/load slots with thumbnails, full keyboard and gamepad rebinding, display, picture, audio and system settings.
 - **Cheats**: god mode, unlimited fuel, ammo and lives, campaign select.
+- **Rewind** (hold the left trigger), **autosave** on mission start and each completed objective, **gamepad rumble**, and **career stats**.
 - **Game Speed**: Smooth (no slowdown) or Original (the console's slowdown).
 - **Launcher**: the games' intros play live behind a gamepad-friendly game picker.
 - **Installer**: Inno Setup, with a ROM page that checks your dumps.
@@ -39,6 +41,8 @@ Host keys:
 - **F5 / F7:** quick save / load.
 - **F11** or **Alt+Enter:** fullscreen.
 - **Tab** or **right trigger:** fast forward.
+- **Q / E** or **LB / RB:** step through the objectives on the minimap.
+- **Backspace** or **left trigger** (hold): rewind.
 - **Esc** or **Back:** pause menu.
 
 Everything can be rebound under **Controls**.

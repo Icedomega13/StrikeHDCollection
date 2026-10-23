@@ -30,6 +30,8 @@ typedef struct {
 } item;
 
 static const char *const OFF_ON[] = { "Off", "On" };
+static const char *const MMSIZE[] = { "Small", "Medium", "Large" };
+static const char *const HDSTYLE[] = { "xBRZ (sharp)", "AI (Real-ESRGAN)" };
 static const char *const WINMODE[] = { "Windowed", "Borderless Fullscreen", "Exclusive Fullscreen" };
 static const char *const ASPECT[] = { "TV Shape (original)", "Square Pixels", "Stretch to Window" };
 static const char *const WIDE[] = { "Off (4:3)", "16:10", "16:9", "21:9", "32:9", "Match window" };
@@ -55,6 +57,8 @@ static item tab_picture[] = {
     { IT_CHOICE, "Scanlines", "Darkens alternate lines like a CRT.", &g_set.scanlines, SCANS, 4 },
     { IT_CHOICE, "Sprite Flicker", "The console could show only 20 sprites per line; Off draws them all.", &g_set.sprite_flicker, FLICKER, 2 },
     { IT_CHOICE, "Status HUD", "Shows armor, fuel, load and lives in the top-left corner while flying.", &g_set.status_hud, OFF_ON, 2 },
+    { IT_CHOICE, "Minimap", "The pause map in the lower-left corner while flying. LB / RB (Q / E) step through the objectives.", &g_set.minimap, OFF_ON, 2 },
+    { IT_CHOICE, "Minimap Size", "How large the minimap is drawn.", &g_set.minimap_size, MMSIZE, 3 },
     { IT_CHOICE, "HD Graphics", "Uses replacement art from an HD pack in the packs folder, when one is installed.", &g_set.hd_graphics, OFF_ON, 2 },
 };
 static item tab_audio[] = {
@@ -66,9 +70,13 @@ static item tab_audio[] = {
 static item tab_system[] = {
     { IT_CHOICE, "Game Speed", "Smooth gives the game a faster CPU so busy scenes never slow down. Original matches the console.", &g_set.authentic_speed, SPEED, 2 },
     { IT_SLIDER, "Fast-Forward Speed", "Hold Tab or the right trigger to fast-forward.", &g_set.ff_speed, 0, 0, 2, 8, 1, "x" },
+    { IT_CHOICE, "Rewind", "Hold the left trigger (Backspace) to rewind the last half minute or so.", &g_set.rewind, OFF_ON, 2 },
+    { IT_CHOICE, "Autosave", "Saves when a mission starts and when an objective is completed (Load State, Auto 1-3).", &g_set.autosave, OFF_ON, 2 },
+    { IT_SLIDER, "Rumble", "Gamepad rumble when you fire, take hits or lose a life. 0 turns it off.", &g_set.rumble, 0, 0, 0, 100, 10, "%" },
     { IT_CHOICE, "Pause When Unfocused", "Freeze the game while another window is active.", &g_set.pause_unfocused, OFF_ON, 2 },
     { IT_CHOICE, "Launcher Intros", "Plays the games' intros live behind the game picker.", &g_set.launcher_intros, OFF_ON, 2 },
     { IT_CHOICE, "Dump Graphics", "For HD pack makers: saves every new graphic on screen to hd_dump in the settings folder.", &g_set.hd_dump, OFF_ON, 2 },
+    { IT_CHOICE, "HD Pack Style", "How Build HD Pack upscales. AI uses your graphics card and the ai folder next to the game; without it, xBRZ is used.", &g_set.hd_style, HDSTYLE, 2 },
     { IT_BUTTON, "Build HD Pack", "Extracts every graphic of this game (a few minutes; the game restarts), upscales them 4x with xBRZ and loads the pack.", 0, 0, 0, 0, 0, 0, 0, make_pack },
     { IT_BUTTON, "Open Settings Folder", "Settings, controls, save states and your ROM copy live here.", 0, 0, 0, 0, 0, 0, 0, open_folder },
 };
@@ -89,8 +97,8 @@ static struct { const char *name; item *it; int n; } tabs[] = {
 #define NTABS 4
 
 /* ---------------- state ---------------- */
-enum { M_RESUME, M_SAVE, M_LOAD, M_SETTINGS, M_CONTROLS, M_CHEATS, M_RESTART, M_SWITCH, M_QUIT, M_COUNT };
-static const char *main_labels[M_COUNT] = { "Resume", "Save State", "Load State", "Settings", "Controls", "Cheats", "Restart Game", "Switch Game", "Quit to Desktop" };
+enum { M_RESUME, M_SAVE, M_LOAD, M_SETTINGS, M_CONTROLS, M_CHEATS, M_STATS, M_RESTART, M_SWITCH, M_QUIT, M_COUNT };
+static const char *main_labels[M_COUNT] = { "Resume", "Save State", "Load State", "Settings", "Controls", "Cheats", "Stats", "Restart Game", "Switch Game", "Quit to Desktop" };
 
 static int is_open, pane, main_focus, sub_focus, tab, slot_focus;
 static int launcher_mode;                /* opened from the game picker: settings only */
@@ -204,6 +212,7 @@ static void adjust(item *it, int d)
 static const char *act_label[ACT_COUNT] = {
     "Up", "Down", "Left", "Right", "A Button", "B Button", "C Button", "Start",
     "Save State (quick)", "Load State (quick)", "Fullscreen", "Fast Forward (hold)", "Pause", "Open This Menu",
+    "Next Objective (minimap)", "Previous Objective (minimap)", "Rewind (hold)",
 };
 
 static void bind_set(int a, int col, int code, int clear)
@@ -240,6 +249,7 @@ static void activate_main(void)
 {
     switch (main_focus) {
     case M_RESUME: menu_close(); break;
+    case M_STATS: break;
     case M_RESTART: confirm(M_RESTART); break;
     case M_SWITCH: confirm(M_SWITCH); break;
     case M_QUIT: confirm(M_QUIT); break;
@@ -250,6 +260,7 @@ static void activate_main(void)
 static void activate_sub(void)
 {
     if (main_focus == M_SAVE) {
+        if (slot_focus >= MENU_SAVE_SLOTS) { set_note("Autosaves are made for you: pick another slot."); return; }
         H->save_slot(slot_focus);
     } else if (main_focus == M_LOAD) {
         if (H->load_slot(slot_focus)) menu_close();
@@ -300,9 +311,9 @@ static void move(int dx, int dy)
         return;
     }
     if (main_focus == M_SAVE || main_focus == M_LOAD) {
-        int c = slot_focus % 3, r = slot_focus / 3;
+        int c = slot_focus % 3, r = slot_focus / 3, rows = MENU_SLOTS / 3;
         if (dx) { if (c + dx < 0) { pane = 0; return; } c = (c + dx + 3) % 3; }
-        if (dy) r = (r + dy + 3) % 3;
+        if (dy) r = (r + dy + rows) % rows;
         slot_focus = r * 3 + c;
     } else if (is_page(main_focus)) {
         int n;
@@ -479,16 +490,38 @@ static void draw_main(void)
     ui_panel(x, y, w, h, 18, C_PANEL, pane == 0 ? C_EDGE : C_EDGE_D);
     for (int k = 0; k < nvis; k++) {
         int i = vis[k];
-        float iy = y + 12 + k * 50.5f;
+        float step = SDL_min(50.5f, (h - 24) / nvis), rh = step - 0.5f;
+        float iy = y + 12 + k * step;
         int f = i == main_focus;
         if (f) {
-            ui_rect(x + 14, iy, w - 28, 50, pane == 0 ? C_SEL : ui_rgba(242, 178, 58, 20));
-            ui_rect(x + 14, iy, 5, 50, pane == 0 ? C_ACCENT : C_DIM);
+            ui_rect(x + 14, iy, w - 28, rh, pane == 0 ? C_SEL : ui_rgba(242, 178, 58, 20));
+            ui_rect(x + 14, iy, 5, rh, pane == 0 ? C_ACCENT : C_DIM);
         }
-        ui_text(UI_LARGE, x + 36, iy + 6, f ? (pane == 0 ? C_ACCENT : C_TEXT) : C_TEXT, main_label(i));
-        if (has_sub(i)) draw_arrow(x + w - 40, iy + 17, 9, 0, f ? C_ACCENT : C_DIM);
-        add_hit(x + 14, iy, w - 28, 50, 0, i, 0);
+        ui_text(UI_LARGE, x + 36, iy + 6 - (50 - rh) / 2, f ? (pane == 0 ? C_ACCENT : C_TEXT) : C_TEXT, main_label(i));
+        if (has_sub(i)) draw_arrow(x + w - 40, iy + rh / 2 - 8, 9, 0, f ? C_ACCENT : C_DIM);
+        add_hit(x + 14, iy, w - 28, rh, 0, i, 0);
     }
+}
+
+/* Career stats of the running game ("label\tvalue" lines from the host). */
+static void draw_stats(void)
+{
+    float x = 490, y = 150, w = 730, h = 470;
+    ui_panel(x, y, w, h, 18, C_PANEL, C_EDGE_D);
+    ui_text(UI_BODY, x + 30, y + 18, C_ACCENT, "Career");
+    ui_text_right(UI_SMALL, x + w - 30, y + 24, C_DIM, H->game_title ? H->game_title : "");
+    ui_rect(x + 24, y + 56, w - 48, 2, C_EDGE_D);
+    char lines[16][96];
+    int n = H->stats_lines ? H->stats_lines(lines, 16) : 0;
+    float ly = y + 72, lh = SDL_min(36.0f, (h - 90) / (n > 0 ? n : 1));
+    for (int i = 0; i < n; i++) {
+        char *tab = SDL_strchr(lines[i], '\t');
+        if (tab) *tab++ = 0;
+        ui_text(UI_BODY, x + 36, ly, C_DIM, lines[i]);
+        if (tab) ui_text_right(UI_BODY, x + w - 36, ly, C_TEXT, tab);
+        ly += lh;
+    }
+    if (!n) ui_text(UI_BODY, x + 36, ly, C_DIM, "No flying recorded yet.");
 }
 
 static void draw_slots(int saving)
@@ -496,20 +529,22 @@ static void draw_slots(int saving)
     float x = 490, y = 150, w = 730, h = 470;
     ui_panel(x, y, w, h, 18, C_PANEL, pane == 1 ? C_EDGE : C_EDGE_D);
     ui_text(UI_BODY, x + 24, y + 14, C_DIM, saving ? "Choose a slot to save into" : "Choose a state to load");
-    float cw = 222, chh = 136;
+    float cw = 222, chh = (h - 58) / (MENU_SLOTS / 3);
     for (int i = 0; i < MENU_SLOTS; i++) {
-        float cx = x + 22 + (i % 3) * (cw + 15), cy = y + 50 + (i / 3) * (chh + 2);
+        float cx = x + 22 + (i % 3) * (cw + 15), cy = y + 50 + (i / 3) * chh;
         int f = pane == 1 && i == slot_focus;
         char when[64] = "";
         SDL_Texture *th = 0;
         int has = H->slot_info(i, when, sizeof when, &th);
         ui_rect(cx, cy, cw, chh - 6, f ? C_SEL : C_PANEL2);
-        float tw = 128, tht = 90;
+        float tht = chh - 18, tw = tht * 128 / 90;
         ui_rect(cx + 6, cy + 6, tw, tht, C_DARK);
         if (has && th) ui_image(th, cx + 6, cy + 6, tw, tht);
         else ui_text_center(UI_SMALL, cx + 6 + tw / 2, cy + 6 + tht / 2 - 10, C_DIM, "Empty");
         char lab[32];
-        if (i == 0) SDL_strlcpy(lab, "Quick", sizeof lab); else SDL_snprintf(lab, sizeof lab, "Slot %d", i);
+        if (i == 0) SDL_strlcpy(lab, "Quick", sizeof lab);
+        else if (i >= MENU_SAVE_SLOTS) SDL_snprintf(lab, sizeof lab, "Auto %d", i - MENU_SAVE_SLOTS + 1);
+        else SDL_snprintf(lab, sizeof lab, "Slot %d", i);
         ui_text(UI_BODY, cx + tw + 16, cy + 8, f ? C_ACCENT : C_TEXT, lab);
         if (has && when[0]) {
             /* when = "YYYY-MM-DD HH:MM" -> "Oct 22" / "10:46" */
@@ -519,8 +554,8 @@ static void draw_slots(int saving)
             char d[16], t[16];
             SDL_snprintf(d, sizeof d, "%s %d", mon[(mm - 1) % 12], dd);
             SDL_snprintf(t, sizeof t, "%02d:%02d", hh, mi);
-            ui_text(UI_SMALL, cx + tw + 16, cy + 46, C_DIM, d);
-            ui_text(UI_SMALL, cx + tw + 16, cy + 68, C_DIM, t);
+            ui_text(UI_SMALL, cx + tw + 16, cy + 38, C_DIM, d);
+            ui_text(UI_SMALL, cx + tw + 16, cy + 60, C_DIM, t);
         }
         if (f) ui_frame(cx, cy, cw, chh - 6, 2, C_ACCENT);
         add_hit(cx, cy, cw, chh - 6, 1, i, 0);
@@ -704,6 +739,7 @@ void menu_draw(int ow, int oh)
     case M_LOAD: draw_slots(0); break;
     case M_SETTINGS: case M_CHEATS: draw_settings(); break;
     case M_CONTROLS: draw_controls(); break;
+    case M_STATS: draw_stats(); break;
     default: {
         float x = 490, y = 150;
         ui_panel(x, y, 730, 470, 18, ui_rgba(14, 17, 12, 150), C_EDGE_D);

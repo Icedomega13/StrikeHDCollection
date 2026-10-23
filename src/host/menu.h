@@ -8,7 +8,8 @@
 #define DS_MENU_H
 #include <SDL3/SDL.h>
 
-#define MENU_SLOTS 9                 /* slot 0 = quick save (F5/F7), 1-8 */
+#define MENU_SLOTS 12                /* slot 0 = quick save (F5/F7), 1-8, 9-11 autosaves */
+#define MENU_SAVE_SLOTS 9            /* slots the player can save into */
 
 typedef struct {
     const char *game_title;
@@ -28,7 +29,8 @@ typedef struct {
     void (*open_settings_folder)(void);
     void (*make_hd_pack)(void);
     int  (*campaign_count)(void);                       /* campaigns of the running game */
-    void (*restart_campaign)(void);                     /* restart at g_cheat.campaign */                         /* starter pack from the dump */
+    void (*restart_campaign)(void);                     /* restart at g_cheat.campaign */
+    int  (*stats_lines)(char (*lines)[96], int max);    /* "label\tvalue" lines for the Stats page */                         /* starter pack from the dump */
 } menu_host;
 
 void menu_init(const menu_host *h);

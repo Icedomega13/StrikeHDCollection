@@ -9,7 +9,7 @@
 
 #define AppName "Strike Remastered Collection HD"
 #define AppExe "StrikeCollectionHD.exe"
-#define AppVersion "0.6.0"
+#define AppVersion "0.7.0"
 
 [Setup]
 AppId={{6E0B5F2A-3C1D-4B8E-9A47-5D2C1F7E8B90}
@@ -37,6 +37,7 @@ Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription
 Source: "..\dist\{#AppExe}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\dist\hdpack_xbrz.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\tools\xbrz\License.txt"; DestDir: "{app}"; DestName: "hdpack_xbrz-LICENSE.txt"; Flags: ignoreversion
+Source: "..\dist\ai\*"; DestDir: "{app}\ai"; Flags: ignoreversion recursesubdirs skipifsourcedoesntexist
 Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion isreadme
 
 [Icons]

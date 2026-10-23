@@ -16,6 +16,21 @@ static int hud(game_hud *h) { return strike_hud(&hcfg, h); }
 static int tour(int reset, int play) { return strike_tour(&hcfg, reset, play); }
 static void cheats(int g, int f, int a, int l) { strike_cheats(&hcfg, g, f, a, l); }
 
+/* Minimap: the pause map's list and icon builder ($0026BC, $00276C,
+ * $002532), its world-to-map transform ($0024CE: world >> [$FF0616] +
+ * (72, 32)); the scale per campaign comes from $0BBCA2 ($0037E0). */
+static const strike_mm_cfg mcfg = {
+    1, 0xFF104E, 0xFF1058, 0xFF1090, 0xFF10EE, 1,
+    0xFF55DE, 0xFF130C, 0xFFFB56, 0xFF130E,
+    0xFF49B4, 0x22, 0, 0, 0, 0,
+    0xFF4542, 0xFF1382,
+    0x0C360E, 0xFF13E4, 1, 0x0BBCA2,
+};
+static const game_mm_view mview = { 72, 32, 5, 0xFF049A, 8, 0xFF105A, 2 };
+static int minimap(game_minimap *o) { return strike_minimap(&mcfg, o); }
+static void minimap_select(int i) { strike_minimap_select(&mcfg, i); }
+static int minimap_name(int i, char *b, int n) { return strike_minimap_name(&mcfg, i, b, n); }
+
 const game_module game_urban = {
     .id = "urban",
     .title = "Urban Strike",
@@ -29,4 +44,8 @@ const game_module game_urban = {
     .tour = tour,
     .cheats = cheats,
     .campaigns = 10,
+    .minimap = minimap,
+    .minimap_select = minimap_select,
+    .minimap_name = minimap_name,
+    .mm_view = &mview,
 };

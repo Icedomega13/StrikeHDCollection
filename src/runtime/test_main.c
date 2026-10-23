@@ -59,6 +59,7 @@ static void dump_vdp(uint64_t f)
 }
 
 static FILE *flightf;
+static const game_module *g_game;
 static void log_state(void)
 {
     if (flightf) fprintf(flightf, "%llu %d\n", (unsigned long long)g_frame, g_ws_flight_frame + 1 >= g_frame);
@@ -82,6 +83,15 @@ static void on_frame(void)
     }
     { static long zat = -2; if (zat == -2) { const char *e = getenv("DS_ZRAM_AT"); zat = e ? atol(e) : -1; }
       if (zat >= 0 && (long)g_frame == zat) { FILE *z = fopen("/tmp/zram.bin", "wb"); if (z) { fwrite(g_zram, 1, sizeof g_zram, z); fclose(z); } } }
+    { static long mat = -2; if (mat == -2) { const char *e = getenv("DS_MM_AT"); mat = e ? atol(e) : -1; }
+      if (mat >= 0 && (long)g_frame == mat && g_game && g_game->minimap) {
+          static game_minimap mm;
+          int ok = g_game->minimap(&mm);
+          printf("minimap %d level %06X count %d sel %d n %d player %d (%d,%d) home %d (%d,%d) world %d,%d-%d,%d shift %d\n", ok, mm.level, mm.count, mm.sel, mm.n,
+                 mm.have_player, mm.px, mm.py, mm.have_home, mm.hx, mm.hy, mm.x0, mm.y0, mm.x1, mm.y1, mm.shift);
+          for (int i = 0; i < mm.count; i++) { char b[48]; int st = g_game->minimap_name(i, b, sizeof b); printf("  [%d] %s state %d\n", i, b, st); }
+          for (int i = 0; i < mm.n; i++) printf("  mark obj %d main %d at %d,%d\n", mm.m[i].obj, mm.m[i].main, mm.m[i].x, mm.m[i].y);
+      } }
     if (ram_every && g_frame % ram_every == 0 && ramf) fwrite(g_ram, 1, sizeof g_ram, ramf);
     if (save_path && g_frame == save_at) {
         size_t n = cpu_state_size();
@@ -129,6 +139,7 @@ int main(int argc, char **argv)
     flog = fopen(path, "w");
     if (!flog) { perror(path); return 1; }
     const game_module *game = game_identify_rom();
+    g_game = game;
     if (!game) { fprintf(stderr, "%s: not a supported ROM\n", argv[1]); return 1; }
     game_boot(game);
     if (load_path) {

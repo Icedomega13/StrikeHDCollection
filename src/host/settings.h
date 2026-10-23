@@ -27,6 +27,8 @@ typedef struct {
     int widescreen;           /* WS_* */
     int hd_graphics;          /* use HD packs when present */
     int status_hud;           /* armour/fuel/load/lives overlay */
+    int minimap;              /* pause-map overlay in the lower left */
+    int minimap_size;         /* 0 small, 1 medium, 2 large */
     /* audio */
     int volume;               /* 0-100 */
     int fm_level, psg_level;  /* 0-150 % */
@@ -37,6 +39,10 @@ typedef struct {
     int authentic_speed;      /* 1 = original CPU speed (slowdown) */
     int launcher_intros;      /* live intros behind the game picker */
     int hd_dump;              /* write on-screen graphics for pack makers */
+    int rewind;               /* keep a rewind history (left trigger / Backspace) */
+    int autosave;             /* save on mission start and objective completion */
+    int rumble;               /* gamepad rumble strength 0-100 (0 = off) */
+    int hd_style;             /* Build HD Pack: 0 xBRZ, 1 AI (Real-ESRGAN, when installed) */
 } settings_t;
 
 extern settings_t g_set;

@@ -26,7 +26,7 @@ endif()
 
 # ---- games in the collection ----
 set(DS_GAMES desert jungle urban)
-set(DS_GAME_SOURCES games/registry.c games/strike_world.c)
+set(DS_GAME_SOURCES games/registry.c games/strike_world.c games/strike_minimap.c)
 foreach(g ${DS_GAMES})
     file(GLOB gen ${CMAKE_SOURCE_DIR}/generated/${g}/recomp_*.c)
     if(NOT gen)
@@ -91,7 +91,8 @@ if(DS_BUILD_HOST)
     endif()
 
     set(DS_HOST_SOURCES src/host/main.c src/host/input.c src/host/settings.c
-        src/host/ui.c src/host/menu.c src/host/embedded_fonts.c src/host/hdpack.c)
+        src/host/ui.c src/host/menu.c src/host/embedded_fonts.c src/host/hdpack.c
+        src/host/rewind.c src/host/stats.c)
     if(WIN32)
         list(APPEND DS_HOST_SOURCES res/desertstrikehd.rc)
     endif()

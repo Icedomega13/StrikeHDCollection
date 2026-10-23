@@ -13,6 +13,7 @@ typedef enum {
     ACT_UP, ACT_DOWN, ACT_LEFT, ACT_RIGHT, ACT_A, ACT_B, ACT_C, ACT_START,
     /* host */
     ACT_SAVE_STATE, ACT_LOAD_STATE, ACT_FULLSCREEN, ACT_FAST_FORWARD, ACT_PAUSE, ACT_MENU,
+    ACT_MM_NEXT, ACT_MM_PREV, ACT_REWIND,
     ACT_COUNT
 } action;
 
@@ -63,5 +64,7 @@ const char *input_pad_name(int code);
 const char *input_pad_confirm_label(void);
 const char *input_pad_back_label(void);
 int  input_pad_connected(void);
+/* Rumble every connected pad: low / high frequency motors 0..1, for ms. */
+void input_rumble(float lo, float hi, int ms);
 
 #endif
