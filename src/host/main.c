@@ -2055,6 +2055,11 @@ int main(int argc, char **argv)
     if (g_set.renderer == RENDERER_OPENGL) SDL_SetHint(SDL_HINT_RENDER_DRIVER, "opengl");
     else if (g_set.renderer == RENDERER_SOFTWARE) SDL_SetHint(SDL_HINT_RENDER_DRIVER, "software");
     ren = win ? SDL_CreateRenderer(win, 0) : 0;
+    if (win && !ren && g_set.renderer != RENDERER_AUTO) {   /* chosen backend unavailable: let SDL pick */
+        SDL_Log("renderer: %s unavailable (%s), using automatic", g_set.renderer == RENDERER_OPENGL ? "opengl" : "software", SDL_GetError());
+        SDL_ResetHint(SDL_HINT_RENDER_DRIVER);
+        ren = SDL_CreateRenderer(win, 0);
+    }
     if (!ren) {
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, APP_TITLE, SDL_GetError(), 0);
         return 1;

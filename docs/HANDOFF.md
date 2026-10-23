@@ -13,6 +13,7 @@ It's the first game of a planned **Strike Remastered Collection HD** (Desert, Ju
 
 ## Where things live
 - **GitHub:** https://github.com/Icedomega13/StrikeHDCollection (branch `main`): the source only. `rom/`, `generated/`, `out/` and `dist/` are git-ignored, so no ROMs and no ROM-derived code.
+  - **Release v0.7.0** published 2026-10-23 (minimap, rewind, autosave, rumble, stats, AI HD packs): https://github.com/Icedomega13/StrikeHDCollection/releases/tag/v0.7.0; main = `f4519b9`. Installer built in Inno Setup on the PC (15.5 MB with the `ai` folder).
   - MIT license. **Release v0.6.0** is published (https://github.com/Icedomega13/StrikeHDCollection/releases/tag/v0.6.0), with the Setup exe and a portable zip; copies are in `release\` on the PC.
   - From the cloud session, branch pushes work, but creating releases, pushing tags and deleting branches are blocked. Do those through the built-in browser on the PC, where the user is signed in to GitHub. Assets reach the page from a temporary branch: fetch them from raw.githubusercontent.com, put them in `#releases-upload` with a DataTransfer, then delete the branch.
 - **Source of truth:** the user's PC at `C:\Users\dac30\source\DesertStrikeHD`, reached through the remote-devices bridge. It has no git repo yet.

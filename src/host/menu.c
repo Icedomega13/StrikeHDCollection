@@ -94,7 +94,10 @@ static item tab_cheats[] = {
 };
 #define NCHEATS 6
 static struct { const char *name; item *it; int n; } tabs[] = {
-    { "Display", tab_display, 5 }, { "Picture", tab_picture, 7 }, { "Audio", tab_audio, 4 }, { "System", tab_system, 7 },
+#define N(a) (int)(sizeof a / sizeof a[0])
+    { "Display", tab_display, N(tab_display) }, { "Picture", tab_picture, N(tab_picture) },
+    { "Audio", tab_audio, N(tab_audio) }, { "System", tab_system, N(tab_system) },
+#undef N
 };
 #define NTABS 4
 

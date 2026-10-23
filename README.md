@@ -129,6 +129,9 @@ installer/         Inno Setup script
 docs/              design notes and findings (start with docs/HANDOFF.md)
 ```
 
+## How it was made
+This project was developed with heavy use of AI: the reverse engineering, recompiler, PC host and features were written by Anthropic's Claude, working with the project's maintainer, who directs, tests and plays it. The recompiled code is checked instruction for instruction against an independent 68000 emulator (see Testing), so the games run exactly as on the console.
+
 ## License
 The project's own code is under the MIT license (`LICENSE`). Third-party components keep their own licenses (below).
 
