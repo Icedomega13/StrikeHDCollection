@@ -6,6 +6,7 @@
 #define DS_SETTINGS_H
 
 enum { WIN_WINDOWED, WIN_BORDERLESS, WIN_EXCLUSIVE, WIN_MODE_COUNT };
+enum { RENDERER_AUTO, RENDERER_OPENGL, RENDERER_SOFTWARE, RENDERER_COUNT };
 enum { ASPECT_4_3, ASPECT_SQUARE, ASPECT_STRETCH, ASPECT_COUNT };
 enum { SCALE_SHARP, SCALE_INTEGER, SCALE_SMOOTH, SCALE_NEAREST, SCALE_COUNT };
 enum { SCAN_OFF, SCAN_LIGHT, SCAN_MEDIUM, SCAN_STRONG, SCAN_COUNT };
@@ -19,6 +20,7 @@ typedef struct {
     int window_w, window_h;   /* last windowed size */
     int vsync;
     int show_fps;
+    int renderer;             /* RENDERER_*; selected at startup */
     /* picture */
     int aspect;               /* ASPECT_* */
     int scaling;              /* SCALE_* */

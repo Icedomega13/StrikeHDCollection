@@ -31,6 +31,7 @@ typedef struct {
 
 static const char *const OFF_ON[] = { "Off", "On" };
 static const char *const WINMODE[] = { "Windowed", "Borderless Fullscreen", "Exclusive Fullscreen" };
+static const char *const RENDERER[] = { "Automatic", "OpenGL (GPU)", "Software" };
 static const char *const ASPECT[] = { "TV Shape (original)", "Square Pixels", "Stretch to Window" };
 static const char *const WIDE[] = { "Off (4:3)", "16:10", "16:9", "21:9", "32:9", "Match window" };
 static const char *const SCALING[] = { "Sharp", "Integer Only", "Smooth", "Pixelated" };
@@ -47,6 +48,7 @@ static item tab_display[] = {
     { IT_MODE,   "Fullscreen Resolution", "Used in exclusive fullscreen. Desktop keeps your monitor's current mode.", &g_set.fullscreen_mode },
     { IT_CHOICE, "VSync", "Syncs to your monitor's refresh to prevent tearing.", &g_set.vsync, OFF_ON, 2 },
     { IT_CHOICE, "Show FPS", "Shows game and display frame rates in the corner.", &g_set.show_fps, OFF_ON, 2 },
+    { IT_CHOICE, "Renderer (restart)", "Choose the SDL rendering backend. The active backend appears in the FPS display; restart to apply.", &g_set.renderer, RENDERER, RENDERER_COUNT },
 };
 static item tab_picture[] = {
     { IT_CHOICE, "Widescreen", "Shows more of the battlefield to the sides. Menus and maps stay 4:3.", &g_set.widescreen, WIDE, 6 },
@@ -84,7 +86,7 @@ static item tab_cheats[] = {
 };
 #define NCHEATS 6
 static struct { const char *name; item *it; int n; } tabs[] = {
-    { "Display", tab_display, 4 }, { "Picture", tab_picture, 7 }, { "Audio", tab_audio, 4 }, { "System", tab_system, 7 },
+    { "Display", tab_display, 5 }, { "Picture", tab_picture, 7 }, { "Audio", tab_audio, 4 }, { "System", tab_system, 7 },
 };
 #define NTABS 4
 
