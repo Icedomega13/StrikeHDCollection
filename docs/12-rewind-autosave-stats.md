@@ -47,3 +47,6 @@ Kept per game in `stats.ini` in the settings folder (`src/host/stats.c`). The fi
 - lives lost.
 
 The pause menu has a **Stats** page, and each game card on the game picker shows a career line. Kills and score aren't counted yet; their RAM locations haven't been mapped.
+
+## Continue / Load Game / New Game (2026-10-23)
+Picking a game in the game picker that has any saves opens a start screen: **Continue** (the state written when the game was last left mid-play, `states/<game>_resume.state`, or else the newest save of any kind, shown with its thumbnail and time), **Load Game** (the pause menu's Load State page) and **New Game** (with the Amiga intro for Desert, when on). Esc / B goes back to the picker. The resume state is written when the game is left (Quit, Switch Game, closing the window) if the playfield was reached that session. Settings > System > Continue Prompt turns the screen off. Loading a state no longer counts the level it lands in as a new mission (no "mission start" autosave after Continue). Tests: `DS_PROMPT=1` shows it under `--frames`.

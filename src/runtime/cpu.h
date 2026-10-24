@@ -30,6 +30,17 @@ extern uint64_t g_ws_flight_frame;
 /* Campaign a new game starts at (0 = the first, as on the console). Read by
  * a patched instruction; used by the graphics extractor and campaign select. */
 extern int32_t g_start_campaign;
+/* Sound effect requests (hints.json patch at the game's sound-effect call):
+ * return 1 to skip the Genesis effect (the host plays a replacement). */
+extern int (*g_sfx_hook)(int id);
+/* Music / digital sample requests (0 stop, 1-99 song, 100+ sample): 1 = skip
+ * the Genesis one, 2 = stop the Genesis music instead. g_music_ctx says where
+ * the request came from (1 = campaign briefing); cleared after each request. */
+extern int (*g_music_hook)(int id);
+extern int g_music_ctx;
+/* The scene record of the cutscene / briefing screen being shown (Desert:
+ * hints.json patches on the scene player $005994), 0 when none. */
+extern uint32_t g_scene_rec;
 
 typedef void (*recomp_fn)(uint32_t entry);
 extern recomp_fn (*cpu_lookup)(uint32_t pc); /* the running game's table (generated) */

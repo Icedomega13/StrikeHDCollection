@@ -34,6 +34,7 @@ static const game_mm_view mview = { 80, 40, 5, 0xFF0286, 8, 0xFF103C, 2 };
 static int minimap(game_minimap *o) { return strike_minimap(&mcfg, o); }
 static void minimap_select(int i) { strike_minimap_select(&mcfg, i); }
 static int minimap_name(int i, char *b, int n) { return strike_minimap_name(&mcfg, i, b, n); }
+static int minimap_units(int i, game_minimap *o) { return strike_minimap_units(&mcfg, i, o); }
 
 const game_module game_desert = {
     .id = "desert",
@@ -51,5 +52,6 @@ const game_module game_desert = {
     .minimap = minimap,
     .minimap_select = minimap_select,
     .minimap_name = minimap_name,
+    .minimap_units = minimap_units,
     .mm_view = &mview,
 };

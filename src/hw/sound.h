@@ -37,6 +37,8 @@ int     snd_read(int16_t *out, int max_frames);
 int     snd_available(void);
 /* Mix levels in percent (100 = default). */
 void    snd_set_levels(int fm_pct, int psg_pct);
+extern int g_psg_mute;                         /* bit per PSG channel (3 = noise) to leave out */
+void    snd_psg_regs(uint8_t vol[4], uint16_t tone[3], int *noise);
 
 /* Save states */
 size_t  snd_state_size(void);

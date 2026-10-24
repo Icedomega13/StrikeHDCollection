@@ -82,6 +82,26 @@
     "002EC2": {
       "imm": "(uint32_t)g_start_campaign",
       "why": "new game starts at campaign g_start_campaign (0 = original)"
+    },
+    "0088FC": {
+      "post": "if (g_sfx_hook && g_sfx_hook((int)R.d[0])) goto L_008908;",
+      "note": "sound effect request (d0 = 0..63): the host can play a replacement and skip the Genesis effect"
+    },
+    "00890E": {
+      "post": "if (g_music_hook) { int r_ = g_music_hook((int)R.d[0]); g_music_ctx = 0; if (r_ == 1) goto L_0089A4; if (r_ == 2) R.d[0] = 0; }",
+      "note": "music / digital sample request (after ext.l d0): 0 stop, 1-99 song, 100+ Z80 sample. Hook result 1: skip it (the host plays a replacement); 2: stop the Genesis music instead"
+    },
+    "0059C8": {
+      "post": "g_scene_rec = R.a[1];",
+      "note": "a cutscene / briefing screen starts ($005994, a1 = its scene record: +$12 picture, +$16 second picture, +$A song): the host can show the Amiga version of the picture"
+    },
+    "005D0C": {
+      "post": "g_scene_rec = 0;",
+      "note": "the scene player returns"
+    },
+    "005E36": {
+      "post": "g_music_ctx = 1;",
+      "note": "campaign briefing music (table $95C by campaign) is about to be requested: tells the music hook where it comes from"
     }
   }
 }

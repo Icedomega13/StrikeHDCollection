@@ -10,6 +10,7 @@ static const char *act_names[ACT_COUNT] = {
     "up", "down", "left", "right", "a", "b", "c", "start",
     "save_state", "load_state", "fullscreen", "fast_forward", "pause", "menu",
     "objective_next", "objective_prev", "rewind",
+    "strafe", "minimap_toggle",
 };
 
 const char *action_name(action a) { return act_names[a]; }
@@ -75,6 +76,8 @@ void input_defaults(bindings *b)
     set(b, ACT_MM_NEXT, SDL_SCANCODE_E, SDL_SCANCODE_UNKNOWN, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, PAD_NONE);
     set(b, ACT_MM_PREV, SDL_SCANCODE_Q, SDL_SCANCODE_UNKNOWN, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, PAD_NONE);
     set(b, ACT_REWIND, SDL_SCANCODE_BACKSPACE, SDL_SCANCODE_UNKNOWN, PAD_AXIS(SDL_GAMEPAD_AXIS_LEFT_TRIGGER, 1), PAD_NONE);
+    set(b, ACT_STRAFE, SDL_SCANCODE_LSHIFT, SDL_SCANCODE_UNKNOWN, SDL_GAMEPAD_BUTTON_NORTH, PAD_NONE);
+    set(b, ACT_MM_TOGGLE, SDL_SCANCODE_M, SDL_SCANCODE_UNKNOWN, PAD_NONE, PAD_NONE);
     b->stick_deadzone = 12000;
 }
 
@@ -382,6 +385,18 @@ unsigned input_pad_state(void)
     static const unsigned bits[ACT_PAD_COUNT] = { GB_UP, GB_DOWN, GB_LEFT, GB_RIGHT, GB_A, GB_B, GB_C, GB_START };
     unsigned s = 0;
     for (int a = 0; a < ACT_PAD_COUNT; a++) if (input_held((action)a)) s |= bits[a];
+    /* Strafe: Desert Strike strafes while A is held, and a tap of A (released
+     * within 15 frames) fires a Hellfire. The strafe button holds A for at
+     * least 16 frames, so it never fires. */
+    static uint64_t strafe_from;
+    static int strafing;
+    if (input_held(ACT_STRAFE)) {
+        if (!strafing) { strafing = 1; strafe_from = g_frame; }
+        s |= GB_A;
+    } else if (strafing) {
+        if (g_frame - strafe_from < 16) s |= GB_A;
+        else strafing = 0;
+    }
     /* a pad cannot press opposite directions at once */
     if ((s & (GB_UP | GB_DOWN)) == (GB_UP | GB_DOWN)) s &= ~(unsigned)(GB_UP | GB_DOWN);
     if ((s & (GB_LEFT | GB_RIGHT)) == (GB_LEFT | GB_RIGHT)) s &= ~(unsigned)(GB_LEFT | GB_RIGHT);

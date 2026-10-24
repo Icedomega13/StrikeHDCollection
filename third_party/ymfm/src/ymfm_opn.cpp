@@ -2377,6 +2377,12 @@ void ym2612::write(uint32_t offset, uint8_t data)
 //  generate - generate one sample of sound
 //-------------------------------------------------
 
+} // namespace ymfm
+// Host hooks (Desert Strike HD): channels to leave out of the mix (bit 6 =
+// DAC), and a per-channel level meter for finding which channel is which.
+extern "C" { unsigned ymfm_chan_mute = 0; unsigned long long ymfm_chan_level[7]; }
+namespace ymfm {
+
 void ym2612::generate(output_data *output, uint32_t numsamples)
 {
 	for (uint32_t samp = 0; samp < numsamples; samp++, output++)
@@ -2393,6 +2399,8 @@ void ym2612::generate(output_data *output, uint32_t numsamples)
 		for (int chan = 0; chan < last_fm_channel; chan++)
 		{
 			m_fm.output(temp.clear(), 5, 256, 1 << chan);
+			ymfm_chan_level[chan] += (unsigned long long)((temp.data[0] < 0 ? -temp.data[0] : temp.data[0]) + (temp.data[1] < 0 ? -temp.data[1] : temp.data[1]));
+			if (ymfm_chan_mute & (1u << chan)) temp.clear();
 			output->data[0] += dac_discontinuity(temp.data[0]);
 			output->data[1] += dac_discontinuity(temp.data[1]);
 		}
@@ -2402,6 +2410,8 @@ void ym2612::generate(output_data *output, uint32_t numsamples)
 		{
 			// DAC enabled: start with DAC value then add the first 5 channels only
 			int32_t dacval = dac_discontinuity(int16_t(m_dac_data << 7) >> 7);
+			ymfm_chan_level[6] += (unsigned long long)(m_dac_data > 0x80 ? m_dac_data - 0x80 : 0x80 - m_dac_data);
+			if (ymfm_chan_mute & 0x40) dacval = dac_discontinuity(0);
 			output->data[0] += m_fm.regs().ch_output_0(0x102) ? dacval : dac_discontinuity(0);
 			output->data[1] += m_fm.regs().ch_output_1(0x102) ? dacval : dac_discontinuity(0);
 		}

@@ -60,6 +60,20 @@ static void dump_vdp(uint64_t f)
 
 static FILE *flightf;
 static const game_module *g_game;
+static FILE *sfxlog;
+static int music_logger(int id)
+{
+    if (sfxlog) fprintf(sfxlog, "%llu music %d\n", (unsigned long long)g_frame, id);
+    return 0;
+}
+static int sfx_logger(int id)
+{
+    game_hud h = { 0 };
+    if (g_game && g_game->hud) g_game->hud(&h);
+    if (sfxlog) fprintf(sfxlog, "%llu %d %04X ammo %d %d %d armor %d fuel %d load %d lives %d\n", (unsigned long long)g_frame, id,
+                        g_pad_buttons[0], h.ammo[0], h.ammo[1], h.ammo[2], h.armor, h.fuel, h.load, h.lives);
+    return 0;
+}
 static void log_state(void)
 {
     if (flightf) fprintf(flightf, "%llu %d\n", (unsigned long long)g_frame, g_ws_flight_frame + 1 >= g_frame);
@@ -153,6 +167,7 @@ int main(int argc, char **argv)
     }
     if (ram_every) { snprintf(path, sizeof path, "%s/ram.bin", outdir); ramf = fopen(path, "wb"); }
     gen_frame_cb = on_frame;
+    { const char *e = getenv("DS_SFX_LOG"); if (e) { sfxlog = fopen(e, "w"); g_sfx_hook = sfx_logger; g_music_hook = music_logger; } }
     cpu_fatal_hook = on_fatal;
     /* Same frame-stepping loop the PC host uses. */
     while (g_frame < max_frames) cpu_run_frame();

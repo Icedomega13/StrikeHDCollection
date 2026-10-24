@@ -35,6 +35,7 @@ void  ui_dim(float alpha);                   /* darken the whole output */
 
 /* Virtual <-> pixel conversion (for mouse input). */
 void  ui_to_virtual(float px, float py, float *vx, float *vy);
+void  ui_virtual_rect(float x, float y, float w, float h, SDL_FRect *out);   /* virtual units -> pixels */
 
 static inline SDL_FColor ui_rgba(int r, int g, int b, int a)
 {

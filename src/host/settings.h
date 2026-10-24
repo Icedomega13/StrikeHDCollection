@@ -5,6 +5,10 @@
 #ifndef DS_SETTINGS_H
 #define DS_SETTINGS_H
 
+/* Genesis: everything as on the Mega Drive. Amiga: every Amiga asset that
+ * is available. Remaster: what the community preferred from each version
+ * (docs/13-amiga-ultimate.md). Custom: the options set one by one. */
+enum { EDITION_GENESIS, EDITION_AMIGA, EDITION_REMASTER, EDITION_CUSTOM, EDITION_COUNT };
 enum { WIN_WINDOWED, WIN_BORDERLESS, WIN_EXCLUSIVE, WIN_MODE_COUNT };
 enum { RENDERER_AUTO, RENDERER_OPENGL, RENDERER_SOFTWARE, RENDERER_COUNT };
 enum { ASPECT_4_3, ASPECT_SQUARE, ASPECT_STRETCH, ASPECT_COUNT };
@@ -35,11 +39,22 @@ typedef struct {
     int volume;               /* 0-100 */
     int fm_level, psg_level;  /* 0-150 % */
     int mute_unfocused;
+    int edition;              /* EDITION_*: presets for the per-feature Genesis/Amiga options */
+    int amiga_sfx;            /* use mapped Amiga samples for sound effects */
+    int amiga_vol;            /* Amiga effects level 0-150 % */
+    int amiga_music;          /* play the Amiga music (modules) where one is assigned */
+    int amiga_music_vol;      /* Amiga music level 0-150 % */
+    int amiga_intro;          /* Desert Strike opens with the Amiga title photographs */
+    int amiga_cutscenes;      /* cutscene pictures shown as their animated Amiga versions */
+    int amiga_extras;         /* Amiga sounds for moments the Genesis is silent (objective jingle, warnings) */
     /* system */
     int ff_speed;             /* fast-forward multiplier 2-8 */
     int pause_unfocused;
     int authentic_speed;      /* 1 = original CPU speed (slowdown) */
     int launcher_intros;      /* live intros behind the game picker */
+    int minimap_pos;          /* 0 lower left, 1 lower right, 2 upper right */
+    int minimap_threats;      /* show enemy air defences near the helicopter */
+    int continue_prompt;      /* Continue / Load Game / New Game when a game with saves is picked */
     int hd_dump;              /* write on-screen graphics for pack makers */
     int rewind;               /* keep a rewind history (left trigger / Backspace) */
     int autosave;             /* save on mission start and objective completion */

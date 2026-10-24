@@ -31,6 +31,10 @@ typedef struct {
 
 static const char *const OFF_ON[] = { "Off", "On" };
 static const char *const MMSIZE[] = { "Small", "Medium", "Large" };
+static const char *const SFXSET[] = { "Genesis", "Amiga" };
+static const char *const MMPOS[] = { "Lower Left", "Lower Right", "Upper Right" };
+static const char *const EDITION[] = { "Genesis", "Amiga", "Remaster", "Custom" };
+int g_sound_lab;                          /* Sound Lab overlay (not saved) */
 static const char *const HDSTYLE[] = { "xBRZ (sharp)", "AI (Real-ESRGAN)" };
 static const char *const WINMODE[] = { "Windowed", "Borderless Fullscreen", "Exclusive Fullscreen" };
 static const char *const RENDERER[] = { "Automatic", "OpenGL (GPU)", "Software" };
@@ -44,6 +48,7 @@ static const char *const FLICKER[] = { "Off (all sprites shown)", "Original (fli
 static const menu_host *H;
 static void open_folder(void) { if (H->open_settings_folder) H->open_settings_folder(); }
 static void make_pack(void) { if (H->make_hd_pack) H->make_hd_pack(); }
+static void add_amiga(void) { if (H->add_amiga_disks) H->add_amiga_disks(); }
 
 static item tab_display[] = {
     { IT_CHOICE, "Window Mode", "Borderless fullscreen switches instantly; exclusive uses the resolution below.", &g_set.window_mode, WINMODE, 3 },
@@ -59,15 +64,27 @@ static item tab_picture[] = {
     { IT_CHOICE, "Scanlines", "Darkens alternate lines like a CRT.", &g_set.scanlines, SCANS, 4 },
     { IT_CHOICE, "Sprite Flicker", "The console could show only 20 sprites per line; Off draws them all.", &g_set.sprite_flicker, FLICKER, 2 },
     { IT_CHOICE, "Status HUD", "Shows armor, fuel, load and lives in the top-left corner while flying.", &g_set.status_hud, OFF_ON, 2 },
-    { IT_CHOICE, "Minimap", "The pause map in the lower-left corner while flying. LB / RB (Q / E) step through the objectives.", &g_set.minimap, OFF_ON, 2 },
+    { IT_CHOICE, "Minimap", "The pause map in a corner while flying. LB / RB (Q / E) step through the objectives; hold Back (Esc) or press M to show or hide it.", &g_set.minimap, OFF_ON, 2 },
     { IT_CHOICE, "Minimap Size", "How large the minimap is drawn.", &g_set.minimap_size, MMSIZE, 3 },
+    { IT_CHOICE, "Minimap Threats", "Marks enemy guns and missiles (the pause map's AAA, Rapier and other enemy entries) near you in red. Off keeps the original challenge.", &g_set.minimap_threats, OFF_ON, 2 },
+    { IT_CHOICE, "Minimap Position", "Which corner the minimap sits in. Hold the menu button (Back / Esc) or press M to show or hide it.", &g_set.minimap_pos, MMPOS, 3 },
     { IT_CHOICE, "HD Graphics", "Uses replacement art from an HD pack in the packs folder, when one is installed.", &g_set.hd_graphics, OFF_ON, 2 },
 };
 static item tab_audio[] = {
+    { IT_CHOICE, "Edition", "Genesis, Amiga, or Remaster: the best of both, as players rated them. Sets the options below.", &g_set.edition, EDITION, 4 },
     { IT_SLIDER, "Master Volume", "", &g_set.volume, 0, 0, 0, 100, 5, "%" },
     { IT_SLIDER, "FM Synth (music, effects)", "The YM2612 chip: most music and sound effects.", &g_set.fm_level, 0, 0, 0, 150, 5, "%" },
     { IT_SLIDER, "PSG (tones, noise)", "The SN76489 chip: rotor noise, beeps, some percussion.", &g_set.psg_level, 0, 0, 0, 150, 5, "%" },
     { IT_CHOICE, "Mute When Unfocused", "Silence the game while another window is active.", &g_set.mute_unfocused, OFF_ON, 2 },
+    { IT_CHOICE, "Sound Effects", "Amiga uses the digitized effects from your Amiga Desert Strike disks wherever one has been assigned (Sound Lab).", &g_set.amiga_sfx, SFXSET, 2 },
+    { IT_SLIDER, "Amiga Effects Volume", "Level of the Amiga samples against the Genesis sound.", &g_set.amiga_vol, 0, 0, 0, 150, 5, "%" },
+    { IT_CHOICE, "Music", "Amiga plays the music from your Amiga Desert Strike disks: title, briefings, game over and more (Sound Lab: , . to change).", &g_set.amiga_music, SFXSET, 2 },
+    { IT_SLIDER, "Amiga Music Volume", "Level of the Amiga music.", &g_set.amiga_music_vol, 0, 0, 0, 150, 5, "%" },
+    { IT_CHOICE, "Intro", "Amiga opens Desert Strike with the Amiga title photographs and music, before the Genesis title. The game picker is unchanged.", &g_set.amiga_intro, SFXSET, 2 },
+    { IT_CHOICE, "Cutscenes", "Amiga shows the Amiga version of the briefing and story pictures, animated where the Amiga animates them; the Genesis text and timing stay.", &g_set.amiga_cutscenes, SFXSET, 2 },
+    { IT_CHOICE, "Amiga Extras", "Amiga sounds where the Genesis is silent: the objective-complete jingle, and (assigned in the Sound Lab) voice lines for mission start, low fuel and a lost life.", &g_set.amiga_extras, OFF_ON, 2 },
+    { IT_BUTTON, "Add Amiga Disks", "Pick your Desert Strike Amiga disk images (.adf). They are copied to the amiga folder in the settings folder.", 0, 0, 0, 0, 0, 0, 0, add_amiga },
+    { IT_CHOICE, "Sound Lab", "[ ] picks the Amiga sample for the last effect, - = its pitch, 0 back to Genesis, \\ replays it. , . pick the Amiga music for the last song.", &g_sound_lab, OFF_ON, 2 },
 };
 static item tab_system[] = {
     { IT_CHOICE, "Game Speed", "Smooth gives the game a faster CPU so busy scenes never slow down. Original matches the console.", &g_set.authentic_speed, SPEED, 2 },
@@ -76,6 +93,7 @@ static item tab_system[] = {
     { IT_CHOICE, "Autosave", "Saves when a mission starts and when an objective is completed (Load State, Auto 1-3).", &g_set.autosave, OFF_ON, 2 },
     { IT_SLIDER, "Rumble", "Gamepad rumble when you fire, take hits or lose a life. 0 turns it off.", &g_set.rumble, 0, 0, 0, 100, 10, "%" },
     { IT_CHOICE, "Pause When Unfocused", "Freeze the game while another window is active.", &g_set.pause_unfocused, OFF_ON, 2 },
+    { IT_CHOICE, "Continue Prompt", "When you pick a game that has saves: Continue, Load Game or New Game. Continue picks up where you quit.", &g_set.continue_prompt, OFF_ON, 2 },
     { IT_CHOICE, "Launcher Intros", "Plays the games' intros live behind the game picker.", &g_set.launcher_intros, OFF_ON, 2 },
     { IT_CHOICE, "Dump Graphics", "For HD pack makers: saves every new graphic on screen to hd_dump in the settings folder.", &g_set.hd_dump, OFF_ON, 2 },
     { IT_CHOICE, "HD Pack Style", "How Build HD Pack upscales. AI uses your graphics card and the ai folder next to the game; without it, xBRZ is used.", &g_set.hd_style, HDSTYLE, 2 },
@@ -160,6 +178,13 @@ void menu_open_launcher(void)
     main_focus = M_SETTINGS;
 }
 
+void menu_open_load(void)
+{
+    menu_open();
+    main_focus = M_LOAD;
+    pane = 1; sub_focus = 0; slot_focus = 0;
+}
+
 void menu_close(void)
 {
     is_open = 0; capturing = 0;
@@ -218,6 +243,7 @@ static const char *act_label[ACT_COUNT] = {
     "Up", "Down", "Left", "Right", "A Button", "B Button", "C Button", "Start",
     "Save State (quick)", "Load State (quick)", "Fullscreen", "Fast Forward (hold)", "Pause", "Open This Menu",
     "Next Objective (minimap)", "Previous Objective (minimap)", "Rewind (hold)",
+    "Strafe (hold)", "Show/Hide Minimap",
 };
 
 static void bind_set(int a, int col, int code, int clear)

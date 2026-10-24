@@ -74,6 +74,8 @@ typedef struct game_module {
     int (*minimap)(game_minimap *out);
     void (*minimap_select)(int index);
     int (*minimap_name)(int index, char *buf, int n);
+    /* All units of a list entry's type (out->m, out->n), whether or not it is selected. */
+    int (*minimap_units)(int index, game_minimap *out);
     const game_mm_view *mm_view;
 } game_module;
 

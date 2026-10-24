@@ -30,12 +30,15 @@ typedef struct {
     void (*make_hd_pack)(void);
     int  (*campaign_count)(void);                       /* campaigns of the running game */
     void (*restart_campaign)(void);                     /* restart at g_cheat.campaign */
-    int  (*stats_lines)(char (*lines)[96], int max);    /* "label\tvalue" lines for the Stats page */                         /* starter pack from the dump */
+    int  (*stats_lines)(char (*lines)[96], int max);    /* "label\tvalue" lines for the Stats page */
+    void (*add_amiga_disks)(void);                      /* file picker for Amiga .adf images */                         /* starter pack from the dump */
 } menu_host;
 
+extern int g_sound_lab;              /* Settings > Audio > Sound Lab */
 void menu_init(const menu_host *h);
 void menu_open(void);
 void menu_open_launcher(void);     /* from the game picker: Settings, Controls, Back */
+void menu_open_load(void);           /* straight to the Load State page */
 void menu_close(void);
 int  menu_is_open(void);
 void menu_event(const SDL_Event *e);

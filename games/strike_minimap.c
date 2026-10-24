@@ -32,17 +32,20 @@ typedef struct {
     int flags;          /* entry flags (+$A): bit 0 alive check, bit 1 extra filter */
     game_minimap *o;
     int obj, main, found;
+    int all;            /* every unit at its own position (no per-cell merging, no cap) */
     uint32_t cells[64];
     int ncells;
 } search;
 
 static void add(search *s, int x, int y)
 {
-    if (s->found >= 64) return;
-    s->found++;
-    uint32_t key = (uint32_t)((y >> 9) & 0xFFFF) << 16 | (uint32_t)((x >> 9) & 0xFFFF);
-    for (int i = 0; i < s->ncells; i++) if (s->cells[i] == key) return;
-    s->cells[s->ncells++] = key;
+    if (!s->all) {
+        if (s->found >= 64) return;
+        s->found++;
+        uint32_t key = (uint32_t)((y >> 9) & 0xFFFF) << 16 | (uint32_t)((x >> 9) & 0xFFFF);
+        for (int i = 0; i < s->ncells; i++) if (s->cells[i] == key) return;
+        s->cells[s->ncells++] = key;
+    }
     game_minimap *o = s->o;
     if (o->n >= GAME_MM_MAX) return;
     game_mm_mark *m = &o->m[o->n++];
@@ -232,6 +235,22 @@ int strike_minimap(const strike_mm_cfg *c, game_minimap *o)
     o->x0 = minx; o->y0 = miny;
     o->x1 = maxx + 320; o->y1 = maxy + 224;
     return 1;
+}
+
+int strike_minimap_units(const strike_mm_cfg *c, int index, game_minimap *o)
+{
+    o->n = 0;
+    int count;
+    uint32_t tab = table(c, &count);
+    if (!tab || index < 0 || index >= count) return 0;
+    uint32_t e = tab + 2 + (uint32_t)index * 12;
+    if (entry_state(c, e)) return 0;
+    search s = { 0 };
+    s.c = c; s.o = o; s.obj = index; s.all = 1;
+    s.flags = (int)mr8(e + 10);
+    s.type = ms8(mptr(e));
+    run_search(&s);
+    return o->n;
 }
 
 void strike_minimap_select(const strike_mm_cfg *c, int index)

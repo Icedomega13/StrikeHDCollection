@@ -195,5 +195,7 @@ typedef struct {
 int  strike_minimap(const strike_mm_cfg *c, game_minimap *out);
 void strike_minimap_select(const strike_mm_cfg *c, int index);
 int  strike_minimap_name(const strike_mm_cfg *c, int index, char *buf, int n);
+/* Every unit of list entry `index` (its type), each at its own position. */
+int  strike_minimap_units(const strike_mm_cfg *c, int index, game_minimap *out);
 
 #endif

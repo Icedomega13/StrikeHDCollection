@@ -6,12 +6,13 @@ Native PC versions of the three Sega Genesis Strike games: *Desert Strike: Retur
 - **Widescreen**: 16:10, 16:9, 21:9 and 32:9, plus "Match window". The battlefield is drawn from each game's own map data beyond the console's 512-pixel limit. Menus, maps and cutscenes stay 4:3.
 - **HD graphics packs**, with a one-click builder. The game extracts its own graphics, upscales them 4× with xBRZ (keeping dithered textures crisp), and loads the result.
 - **Status HUD**: armor, fuel, load, lives and ammo.
-- **Minimap**: the pause map in the corner, live, with the objectives; LB / RB (Q / E) step through them like the pause menu.
+- **Minimap**: the pause map in a corner of your choice, live, with the objectives (and, optionally, nearby enemy guns); LB / RB (Q / E) step through them like the pause menu.
 - **Pause menu**: save/load slots with thumbnails, full keyboard and gamepad rebinding, display, picture, audio and system settings.
 - **Cheats**: god mode, unlimited fuel, ammo and lives, campaign select.
 - **Rewind** (hold the left trigger), **autosave** on mission start and each completed objective, **gamepad rumble**, and **career stats**.
 - **Game Speed**: Smooth (no slowdown) or Original (the console's slowdown).
-- **Launcher**: the games' intros play live behind a gamepad-friendly game picker.
+- **Launcher**: the games' intros play live behind a gamepad-friendly game picker, and a Continue / Load Game / New Game screen picks up where you left off.
+- **Amiga edition for Desert Strike (work in progress)**: add your own Amiga Desert Strike disks and the game can use the Amiga's sound effects (weapons, rotor that follows your speed, rescue calls, voice lines), its ProTracker music, its title photos, and its cutscenes, including the animated ones, which run as the original Amiga programs in a small built-in Amiga emulator. Pick Genesis, Amiga or a mix under Settings → Audio → Edition. The mapping of sounds is still being tuned; the **Sound Lab** and `tools/amiga/sound_labeler.html` let you choose your own.
 - **Installer**: Inno Setup, with a ROM page that checks your dumps.
 
 **No game data is included.** You need your own ROM dumps. They are checked by SHA-1:
@@ -23,6 +24,16 @@ Native PC versions of the three Sega Genesis Strike games: *Desert Strike: Retur
 | Urban Strike | `897a8f6a08d6d7d6e5316f8047532b3e4603e705` |
 
 The recompiled C (`generated/`) is produced from your ROM on your machine and is not part of this repository.
+
+## Screenshots
+| | |
+|---|---|
+| ![Widescreen gameplay](docs/screenshots/gameplay-widescreen.png) | ![A strike on an air base](docs/screenshots/gameplay-airfield.png) |
+| ![Hellfire strike](docs/screenshots/gameplay-strike.png) | ![Campaign briefing with the Amiga briefing room](docs/screenshots/briefing-amiga-room.png) |
+| ![Amiga cutscene: the frigate](docs/screenshots/cutscene-amiga-frigate.png) | ![Amiga cutscene: the refinery](docs/screenshots/cutscene-amiga-refinery.png) |
+| ![Amiga cutscene: game over](docs/screenshots/cutscene-amiga-game-over.png) | ![Amiga cutscene: the ending](docs/screenshots/cutscene-amiga-ending.png) |
+
+Gameplay is 16:9 widescreen with the status HUD and minimap. The Amiga pictures need your own Amiga disks.
 
 ## Download
 The Windows installer and a portable zip are on the [Releases](https://github.com/Icedomega13/StrikeHDCollection/releases) page. Both need your own ROMs.
@@ -43,9 +54,13 @@ Host keys:
 - **Tab** or **right trigger:** fast forward.
 - **Q / E** or **LB / RB:** step through the objectives on the minimap.
 - **Backspace** or **left trigger** (hold): rewind.
+- **Left Shift** or **Y** (hold): strafe, Desert Strike's hold-A sidestep, without ever firing a Hellfire.
+- **M**, or hold **Esc / Back**: show or hide the minimap.
 - **Esc** or **Back:** pause menu.
 
 Everything can be rebound under **Controls**.
+
+**Amiga edition:** Settings → Audio → **Add Amiga Disks**, and choose your Amiga *Desert Strike* `.adf` files (they are copied to `%APPDATA%\DesertStrikeHD\DesertStrikeHD\amiga\`). Nothing from the Amiga version is included. See `docs/13-amiga-ultimate.md`.
 
 **HD graphics:** Settings → System → **Build HD Pack**, once per game. It takes a few minutes. See `docs/09-hd-packs.md`.
 On Linux, choose the rendering backend in Settings → Display → **Renderer (restart)**. OpenGL (GPU) is the default; enable **Show FPS** to see the active SDL renderer. Software rendering remains available as a fallback.
@@ -136,7 +151,7 @@ This project was developed with heavy use of AI: the reverse engineering, recomp
 The project's own code is under the MIT license (`LICENSE`). Third-party components keep their own licenses (below).
 
 ## Third-party
-- Musashi 68000 core (MIT), reference only.
+- Musashi 68000 core (MIT): the lockstep reference, and the CPU of the built-in Amiga that runs the Amiga cutscene programs.
 - ymfm (BSD-3, Aaron Giles).
 - z80 by Nicolas Allemand (MIT; one local fix: `BIT n,(HL)` no longer writes back).
 - SDL3 (zlib).

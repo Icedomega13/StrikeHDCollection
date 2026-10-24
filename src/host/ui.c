@@ -79,6 +79,11 @@ void ui_to_virtual(float px, float py, float *vx, float *vy)
     *vy = (py - OY) / S;
 }
 
+void ui_virtual_rect(float x, float y, float w, float h, SDL_FRect *out)
+{
+    out->x = OX + x * S; out->y = OY + y * S; out->w = w * S; out->h = h * S;
+}
+
 static float measure(font_t *f, const char *s)
 {
     float x = 0;

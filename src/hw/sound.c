@@ -63,6 +63,13 @@ static void push(int32_t l, int32_t r)
     ring[2 * i + 1] = (int16_t)r;
 }
 
+void snd_psg_regs(uint8_t vol[4], uint16_t tone[3], int *noise)
+{
+    for (int i = 0; i < 4; i++) vol[i] = S.psg.vol[i];
+    for (int i = 0; i < 3; i++) tone[i] = S.psg.tone[i];
+    *noise = S.psg.noise;
+}
+
 int snd_available(void) { return (int)(ring_w - ring_r); }
 
 int snd_read(int16_t *out, int max)
@@ -106,6 +113,8 @@ static void psg_write(psg_t *p, uint8_t v)
     }
 }
 
+int g_psg_mute = 0;           /* host: bit per PSG channel (bit 3 = noise) left out of the mix */
+
 static int32_t psg_tick(psg_t *p)
 {
     for (int ch = 0; ch < 3; ch++) {
@@ -125,10 +134,11 @@ static int32_t psg_tick(psg_t *p)
     }
     int32_t s = 0;
     for (int ch = 0; ch < 3; ch++) {
+        if (g_psg_mute & (1 << ch)) continue;
         if (p->tone[ch] <= 1) s += psg_vol[p->vol[ch]];   /* tone 0/1: steady level (sample playback) */
         else s += p->pol[ch] ? psg_vol[p->vol[ch]] : -psg_vol[p->vol[ch]];
     }
-    s += (p->lfsr & 1) ? psg_vol[p->vol[3]] : -psg_vol[p->vol[3]];
+    if (!(g_psg_mute & 8)) s += (p->lfsr & 1) ? psg_vol[p->vol[3]] : -psg_vol[p->vol[3]];
     return s;
 }
 
