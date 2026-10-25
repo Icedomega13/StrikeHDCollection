@@ -42,6 +42,7 @@ static const char *const ASPECT[] = { "TV Shape (original)", "Square Pixels", "S
 static const char *const WIDE[] = { "Off (4:3)", "16:10", "16:9", "21:9", "32:9", "Match window" };
 static const char *const SCALING[] = { "Sharp", "Integer Only", "Smooth", "Pixelated" };
 static const char *const SCANS[] = { "Off", "Light", "Medium", "Strong" };
+static const char *const DIFFICULTY[] = { "Recruit", "Remastered", "Original" };
 static const char *const SPEED[] = { "Smooth (no slowdown)", "Original (with slowdown)" };
 static const char *const FLICKER[] = { "Off (all sprites shown)", "Original (flicker)" };
 
@@ -87,6 +88,7 @@ static item tab_audio[] = {
     { IT_CHOICE, "Sound Lab", "[ ] picks the Amiga sample for the last effect, - = its pitch, 0 back to Genesis, \\ replays it. , . pick the Amiga music for the last song.", &g_sound_lab, OFF_ON, 2 },
 };
 static item tab_system[] = {
+    { IT_CHOICE, "Difficulty", "Desert Strike. Remastered: full speed, but bullets hurt less and a crossfire can only take so much armour a second. Recruit: gentler still. Original: damage as on the Genesis.", &g_set.difficulty, DIFFICULTY, 3 },
     { IT_CHOICE, "Game Speed", "Smooth gives the game a faster CPU so busy scenes never slow down. Original matches the console.", &g_set.authentic_speed, SPEED, 2 },
     { IT_SLIDER, "Fast-Forward Speed", "Hold Tab or the right trigger to fast-forward.", &g_set.ff_speed, 0, 0, 2, 8, 1, "x" },
     { IT_CHOICE, "Rewind", "Hold the left trigger (Backspace) to rewind the last half minute or so.", &g_set.rewind, OFF_ON, 2 },

@@ -1150,11 +1150,13 @@ static void watch_frame(void)
     s->play_seconds += df / 60.0;
     if (h.lives < wt.h.lives) {
         s->lives_lost++;
+        if (SDL_getenv("DS_DMG_LOG")) SDL_Log("life lost frame %llu", (unsigned long long)g_frame);
         rumble(1.0f, 1.0f, 700);
     } else {
         int dmg = wt.h.armor - h.armor;
         if (dmg > 0 && dmg < 5000) {
             s->damage += dmg;
+            if (SDL_getenv("DS_DMG_LOG")) SDL_Log("dmg %d armor %d/%d frame %llu", dmg, h.armor, h.armor_max, (unsigned long long)g_frame);
             float k = (float)dmg / (h.armor_max > 0 ? h.armor_max : 600);
             rumble(0.35f + k * 4, 0.25f + k * 4, 140 + (int)(k * 800));
         }
@@ -1379,6 +1381,7 @@ static const struct { const char *game; int id; const char *sample; int rate; } 
     { "desert", 29, "aC390A9BD0DAA74B1", 17052 },         /* enemy guns: fx 1, as the chain gun */
     { "desert", 13, "a8B30C7E4E37AC8D6", 7989 },          /* enemy missile launch: fx 4 */
     { "desert", 30, "a8B30C7E4E37AC8D6", 7989 },          /* enemy rocket launch: fx 4 */
+    { "desert", 1100, "a55B40A7AF4AD31FD", 2419 },        /* AA guns and tanks, silent on the Genesis: fx 19, as the Amiga */
     { "desert", 10, "a7463DDEE03CB1AF6", 8465 },          /* Hellfire hit: fx 3, explosion with rumble */
     { "desert", 12, "a3EBB4F38B729CA4B", 4144 },          /* taking hits: fx 20, sharp bang */
     { "desert", 17, "aB7023AA2CCC5D007", 2013 },          /* destroyed: fx 16, long explosion */
@@ -1478,6 +1481,42 @@ static void play_mapped(int id)
     if (a) sfx_play(id, a->pcm, a->len, sfxmap[m].rate, g_set.amiga_vol / 100.0f * 0.6f);
 }
 
+/* ---------------- Difficulty (docs/14-difficulty.md) ----------------
+ * Every hit goes through $00A70C with the damage in d0 and the weapon entry
+ * in a4 (patch at $00A6F6). On the player, Remastered and Recruit scale it
+ * by weapon type (the bullet spray much less than missiles and rockets) and
+ * cap the armour lost in any second, so a crossfire wears you down in a few
+ * seconds instead of one. Projectiles, fire rates and enemy numbers are
+ * untouched. Original deals the Genesis damage. */
+static const struct { float bullet, missile, cap; } difficulty_tab[2] = {
+    { 0.35f, 0.60f, 0.15f },                         /* Recruit */
+    { 0.55f, 0.80f, 0.25f },                         /* Remastered */
+};
+static struct { uint64_t frame[64]; int dmg[64]; int n, pos; } dmg_win;
+
+static int host_damage_hook(uint32_t target, uint32_t weapon, int dmg)
+{
+    if (!game || SDL_strcmp(game->id, "desert") || g_set.difficulty >= 2 || dmg <= 0 || extracting || sandbox) return dmg;
+    uint32_t player = (uint32_t)R32(0xFF251C) & 0xFFFFFF;
+    if ((target & 0xFFFFFF) != player) return dmg;
+    int bullet = weapon >= 0x095F86 && weapon < 0x095F86 + 18 * 0x1E && (weapon - 0x095F86) % 0x1E == 0 &&
+                 (g_rom[weapon + 2] << 8 | g_rom[weapon + 3]) == 0x25DA;        /* the bullet projectile */
+    const float *t = bullet ? &difficulty_tab[g_set.difficulty].bullet : &difficulty_tab[g_set.difficulty].missile;
+    int d = (int)(dmg * *t + 0.5f);
+    if (d < 1) d = 1;
+    /* armour lost in the last second (60 frames) */
+    int maxa = R16(0xFF1040), cap = (int)(maxa * difficulty_tab[g_set.difficulty].cap), recent = 0;
+    for (int i = 0; i < dmg_win.n; i++)
+        if (g_frame >= dmg_win.frame[i] && g_frame - dmg_win.frame[i] < 60) recent += dmg_win.dmg[i];
+    if (cap > 0 && recent + d > cap) d = SDL_max(0, cap - recent);
+    if (d > 0) {
+        int k = dmg_win.pos; dmg_win.pos = (dmg_win.pos + 1) % 64; if (dmg_win.n < 64) dmg_win.n++;
+        dmg_win.frame[k] = g_frame; dmg_win.dmg[k] = d;
+    }
+    if (SDL_getenv("DS_DMG_LOG")) SDL_Log("hit %d -> %d (%s, last second %d of %d) frame %llu", dmg, d, bullet ? "bullet" : "missile", recent, cap, (unsigned long long)g_frame);
+    return d;
+}
+
 /* Weapon fire as the Amiga plays it. The weapon fire sound ($00D684) comes
  * from the weapon entry in a4 (the Genesis table at $095F86, 30 bytes an
  * entry); the Amiga's campaign files (disk 3) hold the same table, 44 bytes
@@ -1498,7 +1537,7 @@ static const struct { signed char fx, pitch; } amiga_weapons[18] = {
 
 static int play_amiga_weapon(int id, int m)
 {
-    if (!sfxmap[m].def || (id != 0 && id != 2 && id != 14 && id != 13 && id != 29 && id != 30)) return 0;
+    if (!sfxmap[m].def || (id != 0 && id != 2 && id != 14 && id != 13 && id != 29 && id != 30 && id != 1100)) return 0;
     uint32_t a4 = R.a[4];
     if (a4 < WEAPON_TABLE || a4 >= WEAPON_TABLE + 18 * 0x1E || (a4 - WEAPON_TABLE) % 0x1E) return 0;
     int k = (int)(a4 - WEAPON_TABLE) / 0x1E;
@@ -1827,6 +1866,7 @@ static void draw_scene_swap(void)
 
 static void scene_frame(void)
 {
+    if (SDL_getenv("DS_PC_LOG") && g_frame % 30 == 0) SDL_Log("pc %06X d7 %08X 254 %08X 25c %08X 258 %08X 20c %08X 1c7d %02X frame %llu", R.pc, R.d[7], R32(0xFF0254), R32(0xFF025C), R32(0xFF0258), R32(0xFF020C), (unsigned)(R32(0xFF1C7C) & 0xFF), (unsigned long long)g_frame);
     if (g_frame == 3000 && SDL_getenv("DS_ROM_POKE")) {   /* test: <addr>:<long>[,...] patches ROM data after boot (the game checksums its ROM at start) */
         for (const char *e = SDL_getenv("DS_ROM_POKE"); e && *e; e = SDL_strchr(e, ',') ? SDL_strchr(e, ',') + 1 : NULL) {
             unsigned a = 0, v = 0;
@@ -2202,6 +2242,7 @@ static const struct { const char *name, *sub; int r, g, b; } card_look[] = {
 };
 
 static int sel_row, sel_col;
+static int pack_request;            /* Build HD Pack from the game picker: game index + 1 */
 
 static int sel_dir(void)
 {
@@ -2541,6 +2582,7 @@ static int run_selector(void)
             }
         }
         if (menu_is_open()) { menu_update(); input_clear_pressed(); act = 0; }
+        if (pack_request) { att_stop(); return pack_request - 1; }
         int d = menu_is_open() ? 0 : sel_dir();
         uint64_t now = SDL_GetTicksNS();
         if (d != held) { held = d; held_t = rep_t = now; if (d) sel_move(d); }
@@ -2578,6 +2620,101 @@ static int newest_state(SDL_Time *when)
     }
     if (when) *when = bt;
     return best;
+}
+
+/* New Game: the difficulty, Remastered first (docs/14-difficulty.md).
+ * Returns 0 to go back. Original also brings back the console's slowdown. */
+static int pick_difficulty(void)
+{
+    if (use_script || (max_ticks && !SDL_getenv("DS_PROMPT")) || SDL_strcmp(game->id, "desert")) return 1;
+    static const char *name[3] = { "Recruit", "Remastered", "Original" };
+    static const char *line1[3] = {
+        "New to the Strike games? Enemy fire is much gentler,",
+        "Full speed and full chaos, tuned to be tough but fair:",
+        "Exactly as the Genesis shipped it: the original damage",
+    };
+    static const char *line2[3] = {
+        "and a crossfire wears you down slowly.",
+        "bullets sting less, and a crossfire can't kill you in an instant.",
+        "and the console's slowdown in busy fights.",
+    };
+    static const int order[3] = { 1, 0, 2 };         /* Remastered on top */
+    int sel = 0, result = -2;
+    for (int i = 0; i < 3; i++) if (order[i] == g_set.difficulty) sel = i;
+    while (running && result == -2) {
+        inject_test_input();
+        int ow, oh;
+        SDL_GetRenderOutputSize(ren, &ow, &oh);
+        float bx = 640 - 330, by = 190, bw = 660, bh = 110;
+        SDL_Event e;
+        while (SDL_PollEvent(&e)) {
+            input_event(&e);
+            switch (e.type) {
+            case SDL_EVENT_QUIT: running = 0; break;
+            case SDL_EVENT_KEY_DOWN:
+                if (e.key.repeat && e.key.scancode != SDL_SCANCODE_UP && e.key.scancode != SDL_SCANCODE_DOWN) break;
+                switch (e.key.scancode) {
+                case SDL_SCANCODE_UP: case SDL_SCANCODE_W: sel = (sel + 2) % 3; break;
+                case SDL_SCANCODE_DOWN: case SDL_SCANCODE_S: sel = (sel + 1) % 3; break;
+                case SDL_SCANCODE_RETURN: case SDL_SCANCODE_KP_ENTER: case SDL_SCANCODE_SPACE: result = sel; break;
+                case SDL_SCANCODE_ESCAPE: case SDL_SCANCODE_BACKSPACE: result = -1; break;
+                default: break;
+                }
+                break;
+            case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
+                if (e.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_UP) sel = (sel + 2) % 3;
+                if (e.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_DOWN) sel = (sel + 1) % 3;
+                if (e.gbutton.button == SDL_GAMEPAD_BUTTON_SOUTH || e.gbutton.button == SDL_GAMEPAD_BUTTON_START) result = sel;
+                if (e.gbutton.button == SDL_GAMEPAD_BUTTON_EAST) result = -1;
+                break;
+            case SDL_EVENT_GAMEPAD_AXIS_MOTION: {
+                static int stick;
+                int d = e.gaxis.axis == SDL_GAMEPAD_AXIS_LEFTY ? (e.gaxis.value > 16000) - (e.gaxis.value < -16000) : stick;
+                if (d && d != stick) sel = (sel + (d > 0 ? 1 : 2)) % 3;
+                if (e.gaxis.axis == SDL_GAMEPAD_AXIS_LEFTY) stick = d;
+                break;
+            }
+            case SDL_EVENT_MOUSE_MOTION: case SDL_EVENT_MOUSE_BUTTON_DOWN: {
+                float vx, vy;
+                ui_to_virtual(e.type == SDL_EVENT_MOUSE_MOTION ? e.motion.x : e.button.x,
+                              e.type == SDL_EVENT_MOUSE_MOTION ? e.motion.y : e.button.y, &vx, &vy);
+                for (int i = 0; i < 3; i++)
+                    if (vx >= bx && vx < bx + bw && vy >= by + i * (bh + 16) && vy < by + i * (bh + 16) + bh) {
+                        sel = i;
+                        if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN && e.button.button == SDL_BUTTON_LEFT) result = i;
+                    }
+                break;
+            }
+            default: break;
+            }
+        }
+        SDL_SetRenderDrawColor(ren, 8, 9, 7, 255);
+        SDL_RenderClear(ren);
+        ui_begin(ow, oh);
+        SDL_FColor gold = ui_rgba(196, 164, 98, 255), text = ui_rgba(232, 226, 210, 255), dim = ui_rgba(150, 148, 132, 255);
+        ui_text_center(UI_TITLE, 640, 60, gold, game->title);
+        ui_text_center(UI_BODY, 640, 130, dim, "Choose your difficulty. You can change it any time in Settings > System.");
+        for (int i = 0; i < 3; i++) {
+            int d = order[i], on = i == sel;
+            float y = by + i * (bh + 16);
+            ui_panel(bx, y, bw, bh, 8, on ? ui_rgba(60, 52, 30, 230) : ui_rgba(20, 22, 17, 220), on ? gold : ui_rgba(196, 164, 98, 90));
+            char t[64];
+            SDL_snprintf(t, sizeof t, "%s%s", name[d], d == 1 ? "  (recommended)" : "");
+            ui_text_center(UI_LARGE, 640, y + 10, on ? ui_rgba(255, 214, 72, 255) : text, t);
+            ui_text_center(UI_SMALL, 640, y + 56, on ? text : dim, line1[d]);
+            ui_text_center(UI_SMALL, 640, y + 80, on ? text : dim, line2[d]);
+        }
+        ui_text_right(UI_SMALL, 1220, 684, dim, input_pad_connected() ? "A  Select      B  Back" : "Enter  Select      Esc  Back");
+        after_present();
+        SDL_Delay(8);
+    }
+    input_clear_pressed();
+    if (result < 0) return 0;
+    g_set.difficulty = order[result];
+    g_set.authentic_speed = g_set.difficulty == 2;
+    apply_settings();
+    settings_save(settings_path);
+    return 1;
 }
 
 static int continue_prompt(int *slot_out)
@@ -2812,7 +2949,11 @@ static int upscale_dump(const char *dump, const char *pack);
  * restarts afterwards. */
 static void make_hd_pack(void)
 {
-    if (!game) return;
+    if (!game) {                    /* from the game picker's settings: start the highlighted game and build */
+        if (sel_col >= 0 && sel_col < g_game_count && rom_path_of[sel_col][0]) { pack_request = sel_col + 1; menu_close(); }
+        else say("Add this game's ROM first, then use Build HD Pack");
+        return;
+    }
     int gi = game_index(game);
     menu_close();
     settings_t saved;
@@ -3253,6 +3394,7 @@ int main(int argc, char **argv)
     sfx_mix_init(AUDIO_RATE);
     g_sfx_hook = host_sfx_hook;
     g_music_hook = host_music_hook;
+    g_damage_hook = host_damage_hook;
     rw_state = SDL_malloc(cpu_state_size());
 
     win = SDL_CreateWindow(APP_TITLE, g_set.window_w, g_set.window_h, SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
@@ -3310,6 +3452,9 @@ int main(int argc, char **argv)
     while (running) {
         int from_selector = pick < 0;
         int gi = pick >= 0 ? pick : run_selector();
+        int packing = pack_request != 0;
+        pack_request = 0;
+        if (packing) from_selector = 0;             /* Build HD Pack from the picker: straight in */
         if (from_selector) { g_start_campaign = 0; memset(&g_cheat, 0, sizeof g_cheat); }
         pick = -1;
         if (gi < 0 || !running) break;
@@ -3318,7 +3463,7 @@ int main(int argc, char **argv)
         watch_reset = 1;
         memset(&wt, 0, sizeof wt);
         resume_worthy = 0;
-        if (opt_make_pack) make_hd_pack();
+        if (opt_make_pack || packing) make_hd_pack();
         if (!SDL_strcmp(game->id, "desert") && !amiga_sample_count() &&
             (g_set.amiga_sfx || g_set.amiga_music || g_set.amiga_intro || g_set.amiga_extras))
             say("Amiga sounds, music and intro need your Amiga disks: Settings > Audio > Add Amiga Disks");
@@ -3327,6 +3472,7 @@ int main(int argc, char **argv)
         if (how < 0) { game = 0; continue; }             /* back to the game picker */
         if (how == 1 && !load_slot(slot)) how = 0;
         if (how == 2) menu_open_load();
+        if (how == 0 && (from_selector || SDL_getenv("DS_PROMPT")) && !pick_difficulty()) { game = 0; continue; }
         if (how == 0) amiga_intro();
         run_game();
         if (resume_worthy && game) write_state(RESUME_SLOT);   /* Continue picks up here */

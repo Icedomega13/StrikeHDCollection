@@ -41,6 +41,9 @@ extern int g_music_ctx;
 /* The scene record of the cutscene / briefing screen being shown (Desert:
  * hints.json patches on the scene player $005994), 0 when none. */
 extern uint32_t g_scene_rec;
+/* Damage about to be dealt ($00A6F6 patch, Desert): target object, weapon
+ * entry (a4), damage. Returns the damage to deal. NULL: unchanged. */
+extern int (*g_damage_hook)(uint32_t target, uint32_t weapon, int dmg);
 
 typedef void (*recomp_fn)(uint32_t entry);
 extern recomp_fn (*cpu_lookup)(uint32_t pc); /* the running game's table (generated) */

@@ -87,6 +87,18 @@
       "post": "if (g_sfx_hook && g_sfx_hook((int)R.d[0])) goto L_008908;",
       "note": "sound effect request (d0 = 0..63): the host can play a replacement and skip the Genesis effect"
     },
+    "00A6F6": {
+      "post": "if (g_damage_hook) R.d[0] = (R.d[0] & 0xFFFF0000u) | (uint16_t)g_damage_hook(R.a[1], R.a[4], (int16_t)R.d[0]);",
+      "note": "damage: d0 = the damage about to come off the target's armour ($32(a1)) at $00A70C, a4 = the weapon entry; the host scales it for the difficulty (flags from the btst are untouched)"
+    },
+    "00D678": {
+      "post": "if ((int16_t)R.d[0] < 0 && g_sfx_hook) g_sfx_hook(1100);",
+      "note": "weapon fire with no sound (fire sound -1: the AA guns and tanks, weapon entries 3-7): tells the host (id 1100), which can play the Amiga's sound for it; the Genesis stays silent"
+    },
+    "005BA4": {
+      "post": "{ static unsigned spin_; if (!CC_EQ) spin_ = 0; else if (++spin_ > 120000u) goto L_005BA4; }",
+      "note": "scene text loop's vblank wait: the game branches back to the bclr at $005B9C, so a vblank landing just before the bclr is erased; on hardware the phase drifts, but here it can lock every frame and the screen hangs (seen on the mission-failed \"You destroyed too many Scud Commanders\" screen). The original also misses a few vblanks here in normal play (up to ~20000 spins in the tests), so only after 120000 spins (about a second), keep polling the btst instead (normal waits are untouched, so lockstep still matches)"
+    },
     "00890E": {
       "post": "if (g_music_hook) { int r_ = g_music_hook((int)R.d[0]); g_music_ctx = 0; if (r_ == 1) goto L_0089A4; if (r_ == 2) R.d[0] = 0; }",
       "note": "music / digital sample request (after ext.l d0): 0 stop, 1-99 song, 100+ Z80 sample. Hook result 1: skip it (the host plays a replacement); 2: stop the Genesis music instead"

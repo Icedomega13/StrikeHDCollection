@@ -54,6 +54,7 @@ typedef struct {
     int launcher_intros;      /* live intros behind the game picker */
     int minimap_pos;          /* 0 lower left, 1 lower right, 2 upper right */
     int minimap_threats;      /* show enemy air defences near the helicopter */
+    int difficulty;           /* 0 Recruit, 1 Remastered, 2 Original (docs/14-difficulty.md) */
     int continue_prompt;      /* Continue / Load Game / New Game when a game with saves is picked */
     int hd_dump;              /* write on-screen graphics for pack makers */
     int rewind;               /* keep a rewind history (left trigger / Backspace) */

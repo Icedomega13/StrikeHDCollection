@@ -93,16 +93,21 @@ if(DS_BUILD_HOST)
     set(DS_HOST_SOURCES src/host/main.c src/host/input.c src/host/settings.c
         src/host/ui.c src/host/menu.c src/host/embedded_fonts.c src/host/hdpack.c
         src/host/rewind.c src/host/stats.c src/host/amiga.c src/host/sfxmix.c src/host/modplay.c
-        src/host/amiga_vm.c harness/musashi/m68kcpu.c harness/musashi/m68kops.c
-        harness/musashi/softfloat/softfloat.c)
+        src/host/amiga_vm.c)
     if(WIN32)
         list(APPEND DS_HOST_SOURCES res/desertstrikehd.rc)
     endif()
     add_executable(StrikeCollectionHD WIN32 ${DS_HOST_SOURCES})
     target_link_libraries(StrikeCollectionHD PRIVATE ds_core ${DS_SDL})
     target_include_directories(StrikeCollectionHD PRIVATE third_party/stb harness/musashi)
-    set_source_files_properties(src/host/amiga_vm.c harness/musashi/m68kcpu.c harness/musashi/m68kops.c
-        harness/musashi/softfloat/softfloat.c PROPERTIES COMPILE_DEFINITIONS "M68K_INSTRUCTION_HOOK=M68K_OPT_OFF;M68K_EMULATE_PMMU=M68K_OPT_OFF")
+    # The Amiga VM's own Musashi build (instruction hook off), kept apart from
+    # the lockstep reference (ds_ref), which needs the hook.
+    add_library(avm_m68k OBJECT harness/musashi/m68kcpu.c harness/musashi/m68kops.c
+        harness/musashi/softfloat/softfloat.c)
+    target_include_directories(avm_m68k PRIVATE harness/musashi)
+    target_compile_definitions(avm_m68k PRIVATE M68K_INSTRUCTION_HOOK=M68K_OPT_OFF M68K_EMULATE_PMMU=M68K_OPT_OFF)
+    set_source_files_properties(src/host/amiga_vm.c PROPERTIES COMPILE_DEFINITIONS "M68K_INSTRUCTION_HOOK=M68K_OPT_OFF;M68K_EMULATE_PMMU=M68K_OPT_OFF")
+    target_sources(StrikeCollectionHD PRIVATE $<TARGET_OBJECTS:avm_m68k>)
     target_compile_options(StrikeCollectionHD PRIVATE ${DS_FLAGS})
     if(MINGW)
         target_link_options(StrikeCollectionHD PRIVATE -static)

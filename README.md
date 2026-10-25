@@ -11,6 +11,7 @@ Native PC versions of the three Sega Genesis Strike games: *Desert Strike: Retur
 - **Cheats**: god mode, unlimited fuel, ammo and lives, campaign select.
 - **Rewind** (hold the left trigger), **autosave** on mission start and each completed objective, **gamepad rumble**, and **career stats**.
 - **Game Speed**: Smooth (no slowdown) or Original (the console's slowdown).
+- **Difficulty (prototype, Desert Strike)**: chosen on New Game. *Remastered* keeps the full speed and every bullet on screen but rebalances the damage (bullets sting less than missiles, and a crossfire can't empty your armour in an instant); *Recruit* is gentler; *Original* is the Genesis as shipped, slowdown included. See `docs/14-difficulty.md`.
 - **Launcher**: the games' intros play live behind a gamepad-friendly game picker, and a Continue / Load Game / New Game screen picks up where you left off.
 - **Amiga edition for Desert Strike (work in progress)**: add your own Amiga Desert Strike disks and the game can use the Amiga's sound effects (weapons, rotor that follows your speed, rescue calls, voice lines), its ProTracker music, its title photos, and its cutscenes, including the animated ones, which run as the original Amiga programs in a small built-in Amiga emulator. Pick Genesis, Amiga or a mix under Settings → Audio → Edition. The mapping of sounds is still being tuned; the **Sound Lab** and `tools/amiga/sound_labeler.html` let you choose your own.
 - **Installer**: Inno Setup, with a ROM page that checks your dumps.
