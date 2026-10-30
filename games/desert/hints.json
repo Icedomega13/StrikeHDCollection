@@ -19,6 +19,18 @@
   "comment_entries": "VBlank handlers installed at runtime into the RAM trampoline $FF1C72 (jmp abs.l)",
   "comment_patches": "Widescreen: g_ws_ext = extra pixels drawn each side (multiple of 8, max 56). Each patch reduces to the original instruction when g_ws_ext == 0, so lockstep is unaffected.",
   "patches": {
+    "00C74C": {
+      "imm": "(uint32_t)g_strafe_mul",
+      "why": "strafe (A held) speed in the flight model at $00C626 (the one in use when $FF1088 >= 2): sideways velocity = strafe state x 0x80 on the Genesis, against 0x160 for forward flight; the Strafe Speed setting can raise it"
+    },
+    "00CA4E": {
+      "imm": "(uint32_t)g_strafe_speed",
+      "why": "strafe (A held) sideways thrust, one way: 0xC00 on the Genesis (top strafe speed about a fifth of full flight); the host's Strafe Speed setting can raise it"
+    },
+    "00CA66": {
+      "imm": "(uint32_t)-g_strafe_speed",
+      "why": "strafe sideways thrust, the other way (-0xC00 on the Genesis)"
+    },
     "00B3F4": {
       "imm": "0x140 + g_ws_win",
       "why": "free-scroll range: max camera x = window + 512 - (320 + ext)"

@@ -47,6 +47,7 @@ unsigned input_pad_state(void);
 int  input_held(action a);
 /* Returns 1 once per press of a host action (save state, fullscreen, ...). */
 int  input_pressed(action a);
+extern int input_rstick_strafe;   /* right stick left/right strafes (Desert Strike); main.c sets it from the settings */
 void input_clear_pressed(void);
 
 /* Rebinding. Start a capture for a keyboard key (pad = 0) or a gamepad

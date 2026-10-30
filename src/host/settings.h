@@ -34,7 +34,9 @@ typedef struct {
     int hd_graphics;          /* use HD packs when present */
     int status_hud;           /* armour/fuel/load/lives overlay */
     int minimap;              /* pause-map overlay in the lower left */
-    int minimap_size;         /* 0 small, 1 medium, 2 large */
+    int minimap_size;         /* % of the picture height (12-60); 0, 1, 2: the old small, medium, large */
+    int hud_pos;              /* status HUD corner: 0 upper left, 1 upper right, 2 lower left, 3 lower right */
+    int hud_scale;            /* status HUD size, % */
     /* audio */
     int volume;               /* 0-100 */
     int fm_level, psg_level;  /* 0-150 % */
@@ -52,8 +54,10 @@ typedef struct {
     int pause_unfocused;
     int authentic_speed;      /* 1 = original CPU speed (slowdown) */
     int launcher_intros;      /* live intros behind the game picker */
-    int minimap_pos;          /* 0 lower left, 1 lower right, 2 upper right */
+    int minimap_pos;          /* 0 lower left, 1 lower right, 2 upper right, 3 upper left */
     int minimap_threats;      /* show enemy air defences near the helicopter */
+    int rstick_strafe;        /* Desert: right stick left/right strafes */
+    int strafe_speed;         /* 0 Original, 1 Fast (1.5x), 2 Faster (2x) */
     int difficulty;           /* 0 Recruit, 1 Remastered, 2 Original (docs/14-difficulty.md) */
     int continue_prompt;      /* Continue / Load Game / New Game when a game with saves is picked */
     int hd_dump;              /* write on-screen graphics for pack makers */

@@ -10,6 +10,7 @@ int32_t g_ws_ext;
 int32_t g_ws_win;
 uint64_t g_ws_flight_frame;
 int32_t g_start_campaign;
+int32_t g_strafe_speed = 0xC00, g_strafe_mul = 0x80;
 int (*g_sfx_hook)(int id);
 int (*g_music_hook)(int id);
 int g_music_ctx;

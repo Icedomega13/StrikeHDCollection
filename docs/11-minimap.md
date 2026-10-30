@@ -64,3 +64,8 @@ Notes:
 - **Minimap Position** (Picture tab): lower left (default), lower right, upper right. A tester found it covered the helicopter.
 - **Show/hide:** hold the menu button (Back / Esc) for half a second, or press M (bindable: "Show/Hide Minimap"). The menu now opens when the button is *released* after a tap; the press that closes the menu is ignored on return.
 - **Minimap Threats** (default Off): enemy units of the pause map's enemy entries (AAA, Rapier, VDA ...; everything but numbered objectives, pick-ups, rescues and landing zones) within 420 world px of the helicopter, as red diamonds. `game_module.minimap_units` / `strike_minimap_units` return every unit of an entry's type at its own position (no per-cell merging), whether or not it is selected.
+
+## Any corner, any size (2026-10-26, issue #6)
+- **Minimap Position:** all four corners; the default is now lower right, because Desert Strike writes its messages lower left (the issue's complaint). Saved settings keep their corner.
+- **Minimap Size** is a slider (12-60 % of the picture height; the old Small / Medium / Large become 24 / 32 / 42).
+- **HUD Position** (Upper Left default, Upper Right, Lower Left, Lower Right) and **HUD Size** (50-200 %) for the status HUD. When both share a corner, the minimap stacks next to the HUD (`hud_box`).

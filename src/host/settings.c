@@ -29,10 +29,13 @@ void settings_defaults(settings_t *s)
     s->hd_graphics = 1;
     s->status_hud = 1;
     s->minimap = 1;
-    s->minimap_size = 0;
+    s->minimap_size = 24;
+    s->hud_scale = 100;
+    s->minimap_pos = 1;            /* lower right: Desert writes its messages lower left */
     s->launcher_intros = 1;
     s->continue_prompt = 1;
     s->difficulty = 1;
+    s->rstick_strafe = 1;
     s->hd_style = 1;
     s->rewind = 1;
     s->autosave = 1;
@@ -59,8 +62,8 @@ void settings_defaults(settings_t *s)
     X(aspect, 0, ASPECT_COUNT - 1) X(scaling, 0, SCALE_COUNT - 1) X(scanlines, 0, SCAN_COUNT - 1) \
     X(sprite_flicker, 0, 1) X(widescreen, 0, WS_COUNT - 1) \
     X(volume, 0, 100) X(fm_level, 0, 150) X(psg_level, 0, 150) X(mute_unfocused, 0, 1) \
-    X(ff_speed, 2, 8) X(pause_unfocused, 0, 1) X(hd_graphics, 0, 1) X(hd_dump, 0, 1) X(authentic_speed, 0, 1) X(status_hud, 0, 1) X(launcher_intros, 0, 1) X(continue_prompt, 0, 1) X(difficulty, 0, 2) X(minimap_pos, 0, 2) X(minimap_threats, 0, 1) \
-    X(minimap, 0, 1) X(minimap_size, 0, 2) X(hd_style, 0, 1) \
+    X(ff_speed, 2, 8) X(pause_unfocused, 0, 1) X(hd_graphics, 0, 1) X(hd_dump, 0, 1) X(authentic_speed, 0, 1) X(status_hud, 0, 1) X(launcher_intros, 0, 1) X(continue_prompt, 0, 1) X(difficulty, 0, 2) X(strafe_speed, 0, 2) X(rstick_strafe, 0, 1) X(minimap_pos, 0, 3) X(hud_pos, 0, 3) X(hud_scale, 50, 200) X(minimap_threats, 0, 1) \
+    X(minimap, 0, 1) X(minimap_size, 0, 60) X(hd_style, 0, 1) \
     X(rewind, 0, 1) X(autosave, 0, 1) X(rumble, 0, 100) \
     X(edition, 0, EDITION_COUNT - 1) X(amiga_sfx, 0, 1) X(amiga_vol, 0, 150) X(amiga_music, 0, 1) X(amiga_music_vol, 0, 150) X(amiga_intro, 0, 1) X(amiga_extras, 0, 1) X(amiga_cutscenes, 0, 1)
 

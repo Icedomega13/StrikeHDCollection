@@ -88,3 +88,6 @@ The ground is plane B and the overlay plane A in all three.
 ### Notes
 - More objects are active in a wider view, so the game does more work per frame and the 80-sprite table fills sooner. Very wide views can show more slowdown and flicker than the original.
 - The renderer's line buffer is 1024 px, so the maximum is 352 px per side; modules allow 272 (32:9).
+
+## Leaving the pause map (2026-10-26, issue #7)
+After any non-playfield frame the picture used to stay 4:3 for half a second (the cutscene guard), so closing the pause map showed pillarboxing for about 30 frames. Now only a failed map check (a cutscene drawn over the map) arms the half-second wait; after 20 or more frames simply off the playfield (pause map, status screens) the wait is 6 frames. 6, not less: a respawn shows the playfield for 2 frames between black screens. Closing the map now widens within a frame or two of the playfield coming back. `DS_WS_LOG=1` logs the decision.

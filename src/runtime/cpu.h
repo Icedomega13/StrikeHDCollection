@@ -30,6 +30,8 @@ extern uint64_t g_ws_flight_frame;
 /* Campaign a new game starts at (0 = the first, as on the console). Read by
  * a patched instruction; used by the graphics extractor and campaign select. */
 extern int32_t g_start_campaign;
+/* Desert Strike strafe thrust ($00CA4E / $00CA66; 0xC00 on the Genesis). */
+extern int32_t g_strafe_speed, g_strafe_mul;   /* and $00C74C (0x80) */
 /* Sound effect requests (hints.json patch at the game's sound-effect call):
  * return 1 to skip the Genesis effect (the host plays a replacement). */
 extern int (*g_sfx_hook)(int id);

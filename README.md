@@ -6,7 +6,7 @@ Native PC versions of the three Sega Genesis Strike games: *Desert Strike: Retur
 - **Widescreen**: 16:10, 16:9, 21:9 and 32:9, plus "Match window". The battlefield is drawn from each game's own map data beyond the console's 512-pixel limit. Menus, maps and cutscenes stay 4:3.
 - **HD graphics packs**, with a one-click builder. The game extracts its own graphics, upscales them 4× with xBRZ (keeping dithered textures crisp), and loads the result.
 - **Status HUD**: armor, fuel, load, lives and ammo.
-- **Minimap**: the pause map in a corner of your choice, live, with the objectives (and, optionally, nearby enemy guns); LB / RB (Q / E) step through them like the pause menu.
+- **Minimap and status HUD**: each in any corner and at any size. The minimap is the pause map, live, with the objectives (and, optionally, nearby enemy guns); LB / RB (Q / E) step through them like the pause menu.
 - **Pause menu**: save/load slots with thumbnails, full keyboard and gamepad rebinding, display, picture, audio and system settings.
 - **Cheats**: god mode, unlimited fuel, ammo and lives, campaign select.
 - **Rewind** (hold the left trigger), **autosave** on mission start and each completed objective, **gamepad rumble**, and **career stats**.
@@ -55,7 +55,7 @@ Host keys:
 - **Tab** or **right trigger:** fast forward.
 - **Q / E** or **LB / RB:** step through the objectives on the minimap.
 - **Backspace** or **left trigger** (hold): rewind.
-- **Left Shift** or **Y** (hold): strafe, Desert Strike's hold-A sidestep, without ever firing a Hellfire.
+- **Left Shift** or **Y** (hold): strafe, Desert Strike's hold-A sidestep, without firing a Hellfire. Press A while strafing to fire a Hellfire and keep strafing. The right stick strafes too (left or right). **Strafe Speed** (Settings > System) can make the sidestep 1.5x or 2x faster.
 - **M**, or hold **Esc / Back**: show or hide the minimap.
 - **Esc** or **Back:** pause menu.
 

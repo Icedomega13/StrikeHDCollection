@@ -30,9 +30,9 @@ typedef struct {
 } item;
 
 static const char *const OFF_ON[] = { "Off", "On" };
-static const char *const MMSIZE[] = { "Small", "Medium", "Large" };
 static const char *const SFXSET[] = { "Genesis", "Amiga" };
-static const char *const MMPOS[] = { "Lower Left", "Lower Right", "Upper Right" };
+static const char *const MMPOS[] = { "Lower Left", "Lower Right", "Upper Right", "Upper Left" };
+static const char *const HUDPOS[] = { "Upper Left", "Upper Right", "Lower Left", "Lower Right" };
 static const char *const EDITION[] = { "Genesis", "Amiga", "Remaster", "Custom" };
 int g_sound_lab;                          /* Sound Lab overlay (not saved) */
 static const char *const HDSTYLE[] = { "xBRZ (sharp)", "AI (Real-ESRGAN)" };
@@ -42,6 +42,7 @@ static const char *const ASPECT[] = { "TV Shape (original)", "Square Pixels", "S
 static const char *const WIDE[] = { "Off (4:3)", "16:10", "16:9", "21:9", "32:9", "Match window" };
 static const char *const SCALING[] = { "Sharp", "Integer Only", "Smooth", "Pixelated" };
 static const char *const SCANS[] = { "Off", "Light", "Medium", "Strong" };
+static const char *const STRAFE[] = { "Original", "Fast (1.5x)", "Faster (2x)" };
 static const char *const DIFFICULTY[] = { "Recruit", "Remastered", "Original" };
 static const char *const SPEED[] = { "Smooth (no slowdown)", "Original (with slowdown)" };
 static const char *const FLICKER[] = { "Off (all sprites shown)", "Original (flicker)" };
@@ -64,11 +65,13 @@ static item tab_picture[] = {
     { IT_CHOICE, "Scaling", "Sharp keeps pixels crisp at any size. Integer leaves borders but is exact.", &g_set.scaling, SCALING, 4 },
     { IT_CHOICE, "Scanlines", "Darkens alternate lines like a CRT.", &g_set.scanlines, SCANS, 4 },
     { IT_CHOICE, "Sprite Flicker", "The console could show only 20 sprites per line; Off draws them all.", &g_set.sprite_flicker, FLICKER, 2 },
-    { IT_CHOICE, "Status HUD", "Shows armor, fuel, load and lives in the top-left corner while flying.", &g_set.status_hud, OFF_ON, 2 },
+    { IT_CHOICE, "Status HUD", "Shows armor, fuel, load and lives while flying.", &g_set.status_hud, OFF_ON, 2 },
+    { IT_CHOICE, "HUD Position", "Which corner the status HUD sits in. If the minimap is in the same corner, it moves out of the way.", &g_set.hud_pos, HUDPOS, 4 },
+    { IT_SLIDER, "HUD Size", "How large the status HUD is drawn.", &g_set.hud_scale, 0, 0, 50, 200, 10, "%" },
     { IT_CHOICE, "Minimap", "The pause map in a corner while flying. LB / RB (Q / E) step through the objectives; hold Back (Esc) or press M to show or hide it.", &g_set.minimap, OFF_ON, 2 },
-    { IT_CHOICE, "Minimap Size", "How large the minimap is drawn.", &g_set.minimap_size, MMSIZE, 3 },
+    { IT_SLIDER, "Minimap Size", "How large the minimap is drawn, as a share of the picture height.", &g_set.minimap_size, 0, 0, 12, 60, 2, "%" },
     { IT_CHOICE, "Minimap Threats", "Marks enemy guns and missiles (the pause map's AAA, Rapier and other enemy entries) near you in red. Off keeps the original challenge.", &g_set.minimap_threats, OFF_ON, 2 },
-    { IT_CHOICE, "Minimap Position", "Which corner the minimap sits in. Hold the menu button (Back / Esc) or press M to show or hide it.", &g_set.minimap_pos, MMPOS, 3 },
+    { IT_CHOICE, "Minimap Position", "Which corner the minimap sits in. Hold the menu button (Back / Esc) or press M to show or hide it.", &g_set.minimap_pos, MMPOS, 4 },
     { IT_CHOICE, "HD Graphics", "Uses replacement art from an HD pack in the packs folder, when one is installed.", &g_set.hd_graphics, OFF_ON, 2 },
 };
 static item tab_audio[] = {
@@ -89,6 +92,8 @@ static item tab_audio[] = {
 };
 static item tab_system[] = {
     { IT_CHOICE, "Difficulty", "Desert Strike. Remastered: full speed, but bullets hurt less and a crossfire can only take so much armour a second. Recruit: gentler still. Original: damage as on the Genesis.", &g_set.difficulty, DIFFICULTY, 3 },
+    { IT_CHOICE, "Strafe Speed", "Desert Strike: how fast the helicopter sidesteps while strafing (A held, or the strafe button). Original is the Genesis speed, about a fifth of full flight.", &g_set.strafe_speed, STRAFE, 3 },
+    { IT_CHOICE, "Right Stick Strafe", "Desert Strike: push the right stick left or right to strafe that way (twin-stick style). Off frees the right stick for your own bindings.", &g_set.rstick_strafe, OFF_ON, 2 },
     { IT_CHOICE, "Game Speed", "Smooth gives the game a faster CPU so busy scenes never slow down. Original matches the console.", &g_set.authentic_speed, SPEED, 2 },
     { IT_SLIDER, "Fast-Forward Speed", "Hold Tab or the right trigger to fast-forward.", &g_set.ff_speed, 0, 0, 2, 8, 1, "x" },
     { IT_CHOICE, "Rewind", "Hold the left trigger (Backspace) to rewind the last half minute or so.", &g_set.rewind, OFF_ON, 2 },

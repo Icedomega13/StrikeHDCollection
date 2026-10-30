@@ -5,6 +5,7 @@
 #include "hw/genesis.h"
 
 bindings g_bind;
+int input_rstick_strafe = 1;           /* right stick left/right strafes (Desert Strike) */
 
 static const char *act_names[ACT_COUNT] = {
     "up", "down", "left", "right", "a", "b", "c", "start",
@@ -386,17 +387,45 @@ unsigned input_pad_state(void)
     unsigned s = 0;
     for (int a = 0; a < ACT_PAD_COUNT; a++) if (input_held((action)a)) s |= bits[a];
     /* Strafe: Desert Strike strafes while A is held, and a tap of A (released
-     * within 15 frames) fires a Hellfire. The strafe button holds A for at
-     * least 16 frames, so it never fires. */
-    static uint64_t strafe_from;
-    static int strafing;
-    if (input_held(ACT_STRAFE)) {
-        if (!strafing) { strafing = 1; strafe_from = g_frame; }
-        s |= GB_A;
+     * within 15 frames) fires a Hellfire on the release. The strafe button
+     * holds A for at least 16 frames, so it never fires. Pressing the A
+     * button while strafing fires a Hellfire without stopping the strafe
+     * (issue #9): A is let go for a frame, tapped for 3 frames (the release
+     * fires), let go for a frame, then held again. */
+    static uint64_t strafe_from, tap_at;
+    static int strafing, tapping, a_was;
+    int a_now = input_held(ACT_A);
+    /* Right stick strafing (twin-stick): left/right on the right stick holds
+     * A with that direction, unless something is bound to the right stick. */
+    int rdir = 0;
+    if (input_rstick_strafe) {
+        int bound = 0;
+        for (int a = 0; a < ACT_COUNT && !bound; a++)
+            for (int i = 0; i < MAX_BINDS; i++)
+                if (g_bind.pad[a][i] == PAD_AXIS(SDL_GAMEPAD_AXIS_RIGHTX, 1) || g_bind.pad[a][i] == PAD_AXIS(SDL_GAMEPAD_AXIS_RIGHTX, 0)) bound = 1;
+        for (int p = 0; p < MAX_PADS && !bound && !rdir; p++)
+            if (pads[p]) {
+                int v = SDL_GetGamepadAxis(pads[p], SDL_GAMEPAD_AXIS_RIGHTX);
+                if (v > g_bind.stick_deadzone + 4000) rdir = 1;
+                else if (v < -(g_bind.stick_deadzone + 4000)) rdir = -1;
+            }
+        if (rdir) { s &= ~(unsigned)(GB_LEFT | GB_RIGHT); s |= rdir > 0 ? GB_RIGHT : GB_LEFT; }
+    }
+    if (input_held(ACT_STRAFE) || rdir) {
+        if (!strafing) { strafing = 1; strafe_from = g_frame; tapping = 0; }
+        if (a_now && !a_was && !tapping) { tapping = 1; tap_at = g_frame; }
+        if (tapping) {
+            uint64_t t = g_frame - tap_at;
+            if (t == 0 || t == 4) s &= ~(unsigned)GB_A;           /* let go: no fire after a long hold */
+            else if (t < 4) s |= GB_A;                            /* the tap */
+            else { tapping = 0; strafe_from = g_frame; s |= GB_A; } /* hold again */
+        } else s |= GB_A;
     } else if (strafing) {
         if (g_frame - strafe_from < 16) s |= GB_A;
         else strafing = 0;
+        tapping = 0;
     }
+    a_was = a_now;
     /* a pad cannot press opposite directions at once */
     if ((s & (GB_UP | GB_DOWN)) == (GB_UP | GB_DOWN)) s &= ~(unsigned)(GB_UP | GB_DOWN);
     if ((s & (GB_LEFT | GB_RIGHT)) == (GB_LEFT | GB_RIGHT)) s &= ~(unsigned)(GB_LEFT | GB_RIGHT);

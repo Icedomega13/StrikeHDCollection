@@ -187,18 +187,27 @@ static void on_vblank(void)
     /* playfield test, confirmed by the module's map check (ws_world returns
      * 0 when the planes don't hold the map, e.g. during a cutscene) */
     vdp_world_plane *wp = ws_planes;
-    int play = game && game->ws_active && game->ws_active();
-    if (play && game->ws_world && !game->ws_world(wp, ropts.ext_left, ropts.ext_right)) play = 0;
+    int play = game && game->ws_active && game->ws_active(), map_fail = 0;
+    if (play && game->ws_world && !game->ws_world(wp, ropts.ext_left, ropts.ext_right)) { play = 0; map_fail = 1; }
     /* Anything that isn't the live battlefield (menus, maps, cutscenes) is
-     * shown 4:3. After a non-playfield frame, wait half a second of clean
-     * playfield before widening again, so a cutscene never flickers wide. */
-    static int settle;
-    if (!play) settle = 30;
+     * shown 4:3. After a frame where the planes held something other than
+     * the map (a cutscene drawn over it), wait half a second of clean
+     * playfield before widening again, so a cutscene never flickers wide.
+     * Coming back from a screen that simply isn't the playfield (the pause
+     * map and status screens reset the scroll) needs no wait (issue #7). */
+    static int settle, plain;
+    if (map_fail) { settle = 30; plain = 0; }
+    else if (!play) { settle = ++plain >= 20 ? 6 : SDL_max(settle, 6); }   /* a while off the playfield: a short wait (a respawn flashes the map for 2 frames) */
     else if (settle > 0) { settle--; play = 0; }
+    if (play) plain = 0;
+    if (SDL_getenv("DS_WS_LOG")) { static int was = -1, wf = -1; int st = play * 4 + map_fail * 2 + (game && game->ws_active && game->ws_active()); if (st != was || (g_frame & 7) == 0) SDL_Log("ws play %d mapfail %d active %d settle %d flight %llu frame %llu", play, map_fail, st & 1, settle, (unsigned long long)g_ws_flight_frame, (unsigned long long)g_frame); was = st; (void)wf; }
     int active = ropts.ext_left && play;
     hud_ok = play;
     ropts.world[0] = ropts.world[1] = NULL;
-    ropts.wide_sprites = 0;
+    /* Sprite X as the game's full signed position at every widescreen width
+     * (issue #11): read as 9 bits, a big sprite just off the left edge wraps
+     * to x + 512 and shows as a sliver in the right-hand extension. */
+    ropts.wide_sprites = active;
     ws_planes_ok = active && game->ws_world;
     if (active && game->ws_world && ropts.ext_left > 56) {
         ropts.world[0] = &wp[0];
@@ -650,6 +659,8 @@ static SDL_FRect game_dst;                   /* where the game image was drawn *
  * corner, in the pause menu's style. Sized from the image height so it
  * keeps its proportion in every window and widescreen setting.
  */
+static float hud_box[4];                     /* where the status HUD was drawn (the minimap avoids it) */
+static uint64_t hud_box_frame = (uint64_t)-1;
 static void draw_hud(void)
 {
     game_hud h;
@@ -661,11 +672,14 @@ static void draw_hud(void)
     float u = (y1 - y0) / 720.0f;                /* 1 = image fills a 720-high canvas */
     if (u < 0.55f) u = 0.55f;
     ui_font f = u < 1.25f ? UI_SMALL : UI_BODY;   /* text already scales with the window */
+    u *= (g_set.hud_scale > 0 ? g_set.hud_scale : 100) / 100.0f;
     float lh = ui_line_h(f) * 0.92f;
     float lab = ui_text_w(f, "ARMOR") + 10 * u;
     float barw = 72 * u, valw = ui_text_w(f, "0000");
     float pad = 7 * u, w = pad * 2 + lab + barw + 8 * u + valw, rows = 5;
-    float x = x0 + 14 * u, y = y0 + 12 * u, hgt = pad * 2 + lh * rows;
+    float hgt = pad * 2 + lh * rows;
+    float x = g_set.hud_pos & 1 ? x1 - 14 * u - w : x0 + 14 * u, y = g_set.hud_pos & 2 ? y1 - 12 * u - hgt : y0 + 12 * u;
+    hud_box[0] = x; hud_box[1] = y; hud_box[2] = w; hud_box[3] = hgt; hud_box_frame = g_frame;
     SDL_FColor edge = ui_rgba(196, 164, 98, 200), fill = ui_rgba(14, 17, 12, 170);
     SDL_FColor label = ui_rgba(196, 164, 98, 255), text = ui_rgba(232, 226, 210, 255);
     SDL_FColor green = ui_rgba(118, 150, 64, 255), amber = ui_rgba(242, 178, 58, 255), red = ui_rgba(214, 74, 52, 255);
@@ -916,15 +930,19 @@ static void draw_minimap(void)
     float u = (y1 - y0) / 720.0f;
     if (u < 0.55f) u = 0.55f;
     ui_font f = u < 1.25f ? UI_SMALL : UI_BODY;
-    static const float frac[3] = { 0.24f, 0.32f, 0.42f };
-    float mh = (y1 - y0) * frac[g_set.minimap_size];       /* map height */
+    static const float frac[3] = { 0.24f, 0.32f, 0.42f };   /* the old Small / Medium / Large */
+    float mh = (y1 - y0) * (g_set.minimap_size <= 2 ? frac[g_set.minimap_size] : g_set.minimap_size / 100.0f);   /* map height (0-2: the old sizes, before migration) */
     float k = mh / r[3], mw = r[2] * k;
-    float maxw = (x1 - x0) * 0.38f;
+    float maxw = (x1 - x0) * 0.5f;
     if (mw > maxw) { k = maxw / r[2]; mw = maxw; mh = r[3] * k; }
     float pad = 6 * u, lh = ui_line_h(f) * 0.92f;
     float pw = mw + pad * 2, ph = mh + pad * 2 + lh;
-    float px = g_set.minimap_pos ? x1 - 14 * u - pw : x0 + 14 * u;
-    float py = g_set.minimap_pos == 2 ? y0 + 12 * u : y1 - 12 * u - ph;
+    int right = g_set.minimap_pos == 1 || g_set.minimap_pos == 2, top = g_set.minimap_pos >= 2;
+    float px = right ? x1 - 14 * u - pw : x0 + 14 * u;
+    float py = top ? y0 + 12 * u : y1 - 12 * u - ph;
+    if (hud_box_frame == g_frame && g_set.status_hud &&             /* the HUD is in this corner: stack below / above it */
+        ((g_set.hud_pos & 1) != 0) == right && ((g_set.hud_pos & 2) == 0) == top)
+        py = top ? hud_box[1] + hud_box[3] + 8 * u : hud_box[1] - 8 * u - ph;
     SDL_FColor edge = ui_rgba(196, 164, 98, 200), fill = ui_rgba(14, 17, 12, 170);
     ui_panel(px, py, pw, ph, 8 * u, fill, edge);
     float mx = px + pad, my = py + pad;
@@ -1006,8 +1024,17 @@ static struct {
 static void rumble(float lo, float hi, int ms)
 {
     if (g_set.rumble <= 0 || menu_is_open()) return;
+    /* Issue #5: short weak pulses barely spin up a pad's motors, so the
+     * strengths follow a square-root curve and pulses last at least 70 ms. */
     float k = g_set.rumble / 100.0f;
-    input_rumble(lo * k, hi * k, ms);
+    input_rumble(SDL_sqrtf(lo) * k, SDL_sqrtf(hi) * k, ms < 70 ? 70 : ms);
+}
+
+static void fire_rumble(int weapon)              /* 0 gun, 1 rockets, 2 missiles */
+{
+    static const float lo[3] = { 0.05f, 0.30f, 0.65f }, hi[3] = { 0.30f, 0.55f, 0.90f };
+    static const int ms[3] = { 70, 110, 220 };
+    if (weapon >= 0 && weapon < 3) rumble(lo[weapon], hi[weapon], ms[weapon]);
 }
 
 static void autosave(const char *why)
@@ -1161,13 +1188,11 @@ static void watch_frame(void)
             rumble(0.35f + k * 4, 0.25f + k * 4, 140 + (int)(k * 800));
         }
     }
-    static const float fire_lo[3] = { 0.0f, 0.25f, 0.6f }, fire_hi[3] = { 0.22f, 0.45f, 0.8f };
-    static const int fire_ms[3] = { 45, 90, 180 };
     for (int i = 0; i < 3; i++) {
         int d = wt.h.ammo[i] - h.ammo[i];
         if (wt.h.ammo[i] < 0 || h.ammo[i] < 0 || d <= 0 || d > 50) continue;
         s->shots[i] += d;
-        rumble(fire_lo[i], fire_hi[i], fire_ms[i]);
+        if (SDL_strcmp(game->id, "desert")) fire_rumble(i);   /* Desert: from the weapon sound (works with unlimited ammo) */
     }
     if (h.fuel_max > 0) {                        /* low-fuel warning: once per dip, re-armed by refuelling */
         int lo = h.fuel_max / 4;
@@ -1572,6 +1597,8 @@ static int host_sfx_hook(int id)
 {
     if (!game || sandbox || extracting || att_on) return 0;
     lab_note(id);
+    if (!SDL_strcmp(game->id, "desert") && (id == 0 || id == 2 || id == 14) && R.a[4] >= 0x095F86 && R.a[4] < 0x095F86 + 3 * 0x1E)
+        fire_rumble((int)(R.a[4] - 0x095F86) / 0x1E);   /* the player's own weapons: chain gun, Hydra, Hellfire */
     if (SDL_getenv("DS_SFX_CALLER")) SDL_Log("sfx req %d from %06X a0=%06X a4=%06X (frame %llu)", id, R32(R.a[7] + 56), R.a[0], R.a[4], (unsigned long long)g_frame);
     if (!g_set.amiga_sfx || !amiga_sample_count()) return 0;
     int m = sfxmap_find(id);
@@ -1673,7 +1700,7 @@ static const scene_swap scene_swaps[] = {
     { 0x0DF748, "cCF6F2DB24234DA73", -16, 48, 352, 112, 0, 0, 352, 112, 0 },   /* the dungeon (animated) */
     { 0x0E40E8, "c8A0DB017CF3305C9", -16, 48, 352, 112, 0, 48, 352, 112, 0 },  /* the madman's secret bunker */
     { 0x0E676C, "c5070193A91B7CFD4", -16, 48, 352, 112, 0, 48, 352, 112, 0 },  /* Kilbaba at the map */
-    { 0x0E9626, "c65214A8BD0533C8C", -16, 48, 352, 112, 0, 0, 352, 112, 1 },   /* the general (animated) */
+    { 0x0E9626, "c65214A8BD0533C8C", -16, 48, 352, 112, 0, 0, 352, 112, 3 },   /* the general: Kilbaba slaps him once, only in the scene with the slap (a second picture); elsewhere he just stands (issue #10) */
     { 0x0F186A, "c842B0798B98EBBF0", -16, 48, 352, 112, 0, 48, 352, 112, 0 },  /* the TV news report */
     { 0x0F47FA, "c31C4574AE4C38B0A", 0, 48, 320, 112, 0, 19, 320, 112, 0, NULL, 1, 48, 19, 112 },   /* the Apache on the frigate, crew at work */
     /* the refinery: the Amiga scrolls a 640 px sky (with the refinery) and an
@@ -1710,6 +1737,8 @@ static struct {
     const amiga_anim *g;
     uint64_t t0;
     int frame, shown;
+    uint32_t rec;                   /* the scene record shown (an animation restarts with each) */
+    int still;                      /* hold the first frame */
     uint32_t wait;                  /* ms of the last frame step */
     int nact;
     struct { const scene_actor *a; int bob, timer; } act[MAX_ACTORS];
@@ -1734,7 +1763,9 @@ static const scene_swap *scene_lookup(uint32_t rec)
 static void scene_step(void)
 {
     const scene_swap *sw = scene_lookup(g_scene_rec);
-    if (sw != sc.sw) {
+    if (sw != sc.sw || (sw && sw->loop == 3 && g_scene_rec != sc.rec)) {
+        sc.rec = g_scene_rec;
+        sc.still = sw && sw->loop == 3 && !rom_l(g_scene_rec + 0x16);
         sc.sw = sw;
         sc.a = sw ? amiga_anim_at(amiga_anim_find(sw->amiga)) : NULL;
         sc.frame = 0; sc.shown = -1; sc.wait = (uint32_t)SDL_GetTicks();
@@ -1781,10 +1812,10 @@ static void scene_step(void)
     }
     if (!sc.a || !sc.tex) return;
     uint64_t now = SDL_GetTicks();
-    if (sc.a->nframes > 1 && (uint32_t)now - sc.wait >= 83) {    /* about 12 frames a second */
+    if (sc.a->nframes > 1 && !sc.still && (uint32_t)now - sc.wait >= 83) {    /* about 12 frames a second */
         sc.wait = (uint32_t)now;
         if (sc.frame + 1 < sc.a->nframes) sc.frame++;
-        else if (sc.sw->loop) sc.frame = 1;
+        else if (sc.sw->loop == 1) sc.frame = 1;
     }
     int dirty = sc.frame != sc.shown;
     /* the program's overlays, ticking at 50 Hz */
@@ -1866,6 +1897,18 @@ static void draw_scene_swap(void)
 
 static void scene_frame(void)
 {
+    if (SDL_getenv("DS_SPR_LOG") && hud_ok) {   /* sprite X words whose high bits are not a sign extension */
+        uint32_t sat = (g_vreg[5] & 0x7E) << 9;
+        for (int k = 0; k < 80; k++) {
+            uint16_t x = (uint16_t)(g_vram[(sat + k * 8 + 6) & 0xFFFF] << 8 | g_vram[(sat + k * 8 + 7) & 0xFFFF]);
+            int hi = x >> 9;
+            if (hi != 0 && hi != 0x7F) SDL_Log("spr %d x %04X frame %llu", k, x, (unsigned long long)g_frame);
+        }
+    }
+    input_rstick_strafe = g_set.rstick_strafe && game && !SDL_strcmp(game->id, "desert");
+    { int k = extracting || att_on ? 2 : 2 + g_set.strafe_speed;      /* Strafe Speed setting: x1, x1.5, x2 */
+      g_strafe_speed = 0xC00 * k / 2; g_strafe_mul = 0x80 * k / 2; }
+    if (SDL_getenv("DS_VEL_LOG") && g_frame % 10 == 0) { uint32_t pl = R32(0xFF251C) & 0xFFFFFF, ps = pl ? R32(pl + 0x28) & 0xFFFFFF : 0; if (ps >= 0xFF0000) SDL_Log("vel %d %d pad %02X frame %llu ss %X f1088 %X", (int)R32(ps + 0x18), (int)R32(ps + 0x1C), g_ram[0x1C79], (unsigned long long)g_frame, (unsigned)g_strafe_speed, (unsigned)R32(0xFF1088)); }
     if (SDL_getenv("DS_PC_LOG") && g_frame % 30 == 0) SDL_Log("pc %06X d7 %08X 254 %08X 25c %08X 258 %08X 20c %08X 1c7d %02X frame %llu", R.pc, R.d[7], R32(0xFF0254), R32(0xFF025C), R32(0xFF0258), R32(0xFF020C), (unsigned)(R32(0xFF1C7C) & 0xFF), (unsigned long long)g_frame);
     if (g_frame == 3000 && SDL_getenv("DS_ROM_POKE")) {   /* test: <addr>:<long>[,...] patches ROM data after boot (the game checksums its ROM at start) */
         for (const char *e = SDL_getenv("DS_ROM_POKE"); e && *e; e = SDL_strchr(e, ',') ? SDL_strchr(e, ',') + 1 : NULL) {
@@ -3350,6 +3393,7 @@ int main(int argc, char **argv)
     SDL_snprintf(settings_path, sizeof settings_path, "%ssettings.ini", pref);
     SDL_snprintf(controls_path, sizeof controls_path, "%scontrols.ini", pref);
     if (!settings_load(settings_path)) settings_save(settings_path);
+    if (g_set.minimap_size <= 2) { static const int was[3] = { 24, 32, 42 }; g_set.minimap_size = was[g_set.minimap_size]; }   /* old Small/Medium/Large */
     if (!input_load(controls_path)) input_save(controls_path);
     SDL_snprintf(stats_path, sizeof stats_path, "%sstats.ini", pref);
     stats_load(stats_path);
@@ -3361,6 +3405,23 @@ int main(int argc, char **argv)
     SDL_snprintf(musmap_path, sizeof musmap_path, "%samiga_music.ini", pref);
     musmap_load();
     if (amiga_load_dir(amiga_dir)) SDL_Log("Amiga: %d samples, %d songs", amiga_sample_count(), amiga_module_count());
+    if (SDL_getenv("DS_ANIM_DUMP")) {               /* DS_ANIM_DUMP=<anim id>:<png prefix>: every frame */
+        char spec[200]; SDL_strlcpy(spec, SDL_getenv("DS_ANIM_DUMP"), sizeof spec);
+        char *c = SDL_strchr(spec, ':');
+        if (c) {
+            *c = 0;
+            const amiga_anim *a = amiga_anim_at(amiga_anim_find(spec));
+            for (int f = 0; a && f < a->nframes; f++) {
+                uint8_t *rgb = SDL_malloc((size_t)a->w * a->h * 3);
+                for (int i = 0; i < a->w * a->h; i++) { uint32_t v = a->pal[a->frames[f][i]]; rgb[i*3] = v >> 16; rgb[i*3+1] = v >> 8; rgb[i*3+2] = v; }
+                char path[300]; SDL_snprintf(path, sizeof path, "%s%03d.png", c + 1, f);
+                stbi_write_png(path, a->w, a->h, 3, rgb, a->w * 3);
+                SDL_free(rgb);
+            }
+            SDL_Log("anim %s: %d frames", spec, a ? a->nframes : -1);
+        }
+        return 0;
+    }
     if (SDL_getenv("DS_LIST_SAMPLES")) {
         for (int i = 0; i < amiga_sample_count(); i++) { const amiga_sample *a = amiga_sample_at(i); SDL_Log("sample %s|%s|%d|%d", a->id, a->label, a->rate, a->len); }
         return 0;

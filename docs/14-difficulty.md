@@ -36,3 +36,8 @@ Test: load `balance_test/pow_camp_before.state` (the user's save) with `--key 90
 - Edge-of-screen markers for enemies shooting at you from off screen (from the minimap threat code).
 - A low-armour warning (the Amiga "Warning" voice and a pulsing armour bar).
 - The difficulty stored in each save.
+
+## Strafe speed (2026-10-26)
+A tester asked whether strafing is slow on the Genesis too. It is: the flight model in use during missions (`$00C626`, when `$FF1088` >= 2) turns the strafe state into sideways velocity with `muls.w #$80` at `$00C74C`, against `#$160` for forward flight, and halves it again while turning. Measured: about 0.54 px a frame strafing against 2.6 flying forward. **Settings > System > Strafe Speed** (Original, Fast 1.5x, Faster 2x) scales that constant (`g_strafe_mul`) and the other flight model's strafe thrust (`$00CA4E` / `$00CA66`, 0xC00, `g_strafe_speed`); measured 0.54 / 0.80 / 1.07 px a frame. The launcher background and the graphics extractor always use the original.
+
+**Strafe and Hellfire together (issue #9):** a Hellfire fires on the *release* of a short A tap (pressed under 16 frames); a long hold strafes. While the strafe button holds A, pressing A sends: release 1 frame, press 3 frames, release (fires), then hold again (`input_pad_state`). No 6-button pad is needed.
