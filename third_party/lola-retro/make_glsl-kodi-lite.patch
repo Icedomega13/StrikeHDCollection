@@ -1,0 +1,30 @@
+diff --git a/tools/make_glsl.py b/tools/make_glsl.py
+index 2b1ca25..2f4f681 100644
+--- a/tools/make_glsl.py
++++ b/tools/make_glsl.py
+@@ -56,7 +56,7 @@ ROOT = Path(__file__).resolve().parent.parent
+ SLANG = ROOT / "shaders" / "lola-retro" / "shaders"
+ sys.path.insert(0, str(Path(__file__).resolve().parent))
+ from make_presets import (BASE, FLAT, PASSES, PRESET_PASSES, PRESETS, fmt, super_lite_passes,  # noqa: E402
+-                          with_native_pass)
++                          with_native_pass, lite_passes)
+ 
+ # The parameters left adjustable, in the order the emulator's list shows them.
+ # Everything else is fixed at the preset's value.
+@@ -593,11 +593,15 @@ def write_kodi(table):
+     out = target["out"]
+     sources = {}
+     for name in PRESETS:
+-        for kind in ("full", "super-lite"):
++        for kind in ("full", "lite", "super-lite"):
+             for folder, variant in (("curved", {}), ("flat", FLAT)):
+                 vals = {**BASE, **PRESETS[name], **variant}
+                 if kind == "full":
+                     text, up = kodi_chain(name), "../shaders/"
++                elif kind == "lite":
++                    text = lite_passes(with_native_pass(PRESET_PASSES.get(name, PASSES)), vals)
++                    assert "LR_CRT" not in text, name
++                    up, folder = "../../shaders/", f"lite/{folder}"
+                 else:
+                     text, up, folder = kodi_super_lite_chain(name, vals), "../../shaders/", f"super-lite/{folder}"
+                 passes = retroarch_chain(text)

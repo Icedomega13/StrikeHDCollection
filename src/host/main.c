@@ -37,6 +37,7 @@
 #include "amiga_vm.h"
 #include "sfxmix.h"
 #include "modplay.h"
+#include "crt.h"
 #include "gpumon.h"
 
 static void music_stop(void);
@@ -65,6 +66,7 @@ static char settings_path[1024], controls_path[1024], stats_path[1024];
 static const game_module *game;
 
 static uint32_t fb[VDP_MAX_W * VDP_H];
+static uint64_t fb_picture;                 /* counts the pictures rendered into fb */
 static int fb_w = 320;
 /* HD packs: frame composed at hd.scale x into hdfb when a pack is active */
 static vdp_hd hd;
@@ -181,6 +183,7 @@ static void on_vblank(void)
     if (att_on) {                            /* launcher background: plain 4:3 */
         static const vdp_render_opts plain = { 0, 0, 0 };
         vdp_render(fb, VDP_MAX_W, &plain);
+        fb_picture++;
         fb_w = vdp_display_width();
         return;
     }
@@ -229,6 +232,7 @@ static void on_vblank(void)
     }
     uint64_t t0 = SDL_GetTicksNS();
     vdp_render(fb, VDP_MAX_W, &ropts);
+    fb_picture++;
     render_ns += SDL_GetTicksNS() - t0; render_frames++;
     fb_w = ropts.ext_left + vdp_display_width() + ropts.ext_right;
     if (g_set.hd_dump && game) {
@@ -609,11 +613,23 @@ static void apply_edition(void)
     prev_music = g_set.amiga_music;
 }
 
+static const SDL_DisplayMode *display_mode(void);
+
 static void apply_settings(void)
 {
     apply_edition();
     apply_window_mode();
     SDL_SetRenderVSync(ren, g_set.vsync ? 1 : 0);
+    {   /* what the display really does (tearing, judder reports) */
+        int vs = -9;
+        SDL_GetRenderVSync(ren, &vs);
+        const SDL_DisplayMode *dm = display_mode();
+        int ww = 0, wh = 0;
+        SDL_GetWindowSizeInPixels(win, &ww, &wh);
+        SDL_Log("video: %s, display %dx%d @ %.2f Hz, window %dx%d (mode %d), renderer %s, vsync asked %d got %d",
+                SDL_GetCurrentVideoDriver(), dm->w, dm->h, dm->refresh_rate,
+                ww, wh, g_set.window_mode, SDL_GetRendererName(ren), g_set.vsync, vs);
+    }
     ropts.sprite_limits = g_set.sprite_flicker;
     g_frame_insns = g_set.authentic_speed ? GEN_FRAME_INSNS_AUTHENTIC : GEN_FRAME_INSNS;
     apply_ws();
@@ -706,8 +722,35 @@ static int find_compositing(void)
 }
 
 /* Hooks for more measures: lines in the Diagnostics box, fields in the log line. */
-static void diag_overlay_extra(SDL_FColor ok, SDL_FColor warn, SDL_FColor bad) { (void)ok; (void)warn; (void)bad; }
-static void diag_extra(char *buf, size_t n) { if (n) buf[0] = 0; }
+static void box_line(SDL_FColor c, const char *fmt, ...);
+
+/* The CRT filter's lines: what runs, its GPU time a frame and each pass's. */
+static void diag_overlay_extra(SDL_FColor ok, SDL_FColor warn, SDL_FColor bad)
+{
+    if (!g_set.crt) return;
+    float ms = crt_gpu_ms();
+    char passes[400];
+    if (ms < 0.0f) {
+        box_line(warn, "CRT filter not running: %s", crt_why_not()[0] ? crt_why_not() : "no game picture yet");
+        return;
+    }
+    box_line(ms > 14.0f ? bad : ms > 10.0f ? warn : ok, "CRT %s   GPU %.1f ms a frame", crt_describe(), ms);
+    if (crt_pass_times(passes, sizeof passes)) box_line(ok, "Passes: %s", passes);
+    if (ms > 14.0f)
+        box_line(warn, "The CRT filter takes %.0f of the 16.7 ms a frame has: try a lower resolution or an RGB preset.", ms);
+}
+
+static void diag_extra(char *buf, size_t n)
+{
+    float ms = g_set.crt ? crt_gpu_ms() : -1.0f;
+    char passes[400];
+    if (!g_set.crt) SDL_snprintf(buf, n, "crt=off");
+    else if (ms < 0.0f) SDL_snprintf(buf, n, "crt=not-running");
+    else {
+        crt_pass_times(passes, sizeof passes);
+        SDL_snprintf(buf, n, "crt_gpu_ms=%.2f crt=\"%s\" passes_ms=\"%s\"", ms, crt_describe(), passes);
+    }
+}
 
 static SDL_FRect game_dst;                   /* where the game image was drawn */
 
@@ -1313,15 +1356,6 @@ static int rewind_step(void)                     /* one step back; 0 at the star
 
 static void draw_game(int ow, int oh)
 {
-    int S = 1;
-    SDL_Texture *src_tex = tex;
-    if (hd_on && hdtex) {
-        S = hd.scale;
-        src_tex = hdtex;
-        SDL_UpdateTexture(hdtex, &(SDL_Rect){ 0, 0, fb_w * S, VDP_H * S }, hdfb, VDP_MAX_W * 4 * 4);
-    } else {
-        SDL_UpdateTexture(tex, &(SDL_Rect){ 0, 0, fb_w, VDP_H }, fb, VDP_MAX_W * 4);
-    }
     int dispw = vdp_display_width();
     double aspect;
     switch (g_set.aspect) {
@@ -1331,6 +1365,33 @@ static void draw_game(int ow, int oh)
     }
     double dw = ow, dh = ow / aspect;
     if (dh > oh) { dh = oh; dw = oh * aspect; }
+    SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
+    SDL_RenderClear(ren);
+
+    /* CRT filter: from the 1x picture (the tube makes its own detail), over
+     * the whole area (it resamples the picture, so no integer scaling) */
+    static int crt_said;
+    if (g_set.crt) {
+        SDL_FRect area = { (float)SDL_floor((ow - dw) / 2), (float)SDL_floor((oh - dh) / 2), (float)dw, (float)dh };
+        int console = dispw <= 256 ? 3 : 2;   /* Lola Retro: Mega Drive H32 / H40 */
+        crt_look look = { g_set.crt, g_set.crt_flat, g_set.crt_glow, g_set.crt_wires, g_set.crt_antimoire, g_set.crt_dither, g_set.crt_mask };
+        if (crt_draw(&look, fb, VDP_MAX_W, fb_w, VDP_H, console, area, g_frame, fb_picture)) {
+            game_dst = area;
+            crt_said = 0;
+            return;
+        }
+        if (!crt_said) { say(crt_why_not()); crt_said = 1; }
+    } else crt_said = 0;
+
+    int S = 1;
+    SDL_Texture *src_tex = tex;
+    if (hd_on && hdtex) {
+        S = hd.scale;
+        src_tex = hdtex;
+        SDL_UpdateTexture(hdtex, &(SDL_Rect){ 0, 0, fb_w * S, VDP_H * S }, hdfb, VDP_MAX_W * 4 * 4);
+    } else {
+        SDL_UpdateTexture(tex, &(SDL_Rect){ 0, 0, fb_w, VDP_H }, fb, VDP_MAX_W * 4);
+    }
     if (g_set.scaling == SCALE_INTEGER && oh >= VDP_H) {
         int k = (int)(dh / VDP_H);
         if (k < 1) k = 1;
@@ -1341,9 +1402,6 @@ static void draw_game(int ow, int oh)
     SDL_FRect dst = { (float)SDL_floor((ow - dw) / 2), (float)SDL_floor((oh - dh) / 2), (float)dw, (float)dh };
     game_dst = dst;
     SDL_FRect src = { 0, 0, (float)(fb_w * S), (float)(VDP_H * S) };
-
-    SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
-    SDL_RenderClear(ren);
     if (g_set.scaling == SCALE_SHARP && S > 1 && dh <= VDP_H * S) {
         /* HD art already has the detail: just filter it down */
         SDL_SetTextureScaleMode(src_tex, SDL_SCALEMODE_LINEAR);
@@ -3707,11 +3765,13 @@ int main(int argc, char **argv)
     win = SDL_CreateWindow(APP_TITLE, g_set.window_w, g_set.window_h, SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
     /* Renderer is selected at launch. Environment setting SDL_RENDER_DRIVER
      * retains SDL's normal higher priority as an override. */
-    if (g_set.renderer == RENDERER_OPENGL) SDL_SetHint(SDL_HINT_RENDER_DRIVER, "opengl");
+    /* The CRT filter runs on OpenGL: Automatic picks it when the filter is on. */
+    int want_gl = g_set.renderer == RENDERER_OPENGL || (g_set.renderer == RENDERER_AUTO && g_set.crt);
+    if (want_gl) SDL_SetHint(SDL_HINT_RENDER_DRIVER, "opengl");
     else if (g_set.renderer == RENDERER_SOFTWARE) SDL_SetHint(SDL_HINT_RENDER_DRIVER, "software");
     ren = win ? SDL_CreateRenderer(win, 0) : 0;
-    if (win && !ren && g_set.renderer != RENDERER_AUTO) {   /* chosen backend unavailable: let SDL pick */
-        SDL_Log("renderer: %s unavailable (%s), using automatic", g_set.renderer == RENDERER_OPENGL ? "opengl" : "software", SDL_GetError());
+    if (win && !ren && (want_gl || g_set.renderer != RENDERER_AUTO)) {   /* chosen backend unavailable: let SDL pick */
+        SDL_Log("renderer: %s unavailable (%s), using automatic", want_gl ? "opengl" : "software", SDL_GetError());
         SDL_ResetHint(SDL_HINT_RENDER_DRIVER);
         ren = SDL_CreateRenderer(win, 0);
     }
@@ -3720,6 +3780,7 @@ int main(int argc, char **argv)
         return 1;
     }
     tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_XRGB8888, SDL_TEXTUREACCESS_STREAMING, VDP_MAX_W, VDP_H);
+    if (!crt_init(ren)) SDL_Log("crt: %s", crt_why_not());
     ui_init(ren);
     load_icon();
     load_modes();

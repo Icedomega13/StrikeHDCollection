@@ -31,6 +31,13 @@ typedef struct {
     int aspect;               /* ASPECT_* */
     int scaling;              /* SCALE_* */
     int scanlines;            /* SCAN_* */
+    int crt;                  /* CRT filter: 0 off, else a Lola Retro preset (crt.h) */
+    int crt_flat;             /* 1 = flat screen, square corners */
+    int crt_glow;             /* glass glow and room reflection (the halo around bright things) */
+    int crt_wires;            /* a Trinitron's damper wires (the aperture grille presets) */
+    int crt_antimoire;        /* mask on screen pixels, smoothed scanlines */
+    int crt_dither;           /* blend 1-pixel dithering on RGB / S-Video, as composite did */
+    int crt_mask;             /* phosphor mask: 0 as in the preset, 1 half, 2 off */
     int sprite_flicker;       /* 1 = original per-line sprite limits */
     int widescreen;           /* WS_* */
     int hd_graphics;          /* use HD packs when present */
