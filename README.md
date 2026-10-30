@@ -85,7 +85,7 @@ python -m pip install --upgrade pip
 python -m pip install capstone pillow
 ```
 
-Place your own supported ROM dumps in `rom/` as `desert_strike.bin`, `jungle_strike.bin` and `urban_strike.bin`. Then generate each game's C source and build the launcher:
+Place your own supported ROM dumps in `rom/` as `desert_strike.bin`, `jungle_strike.bin` and `urban_strike.bin`. You only need the ones you have: the build includes every game whose C source has been generated, and the game picker shows just those. Generate each game's C source and build the launcher:
 
 ```sh
 python tools/trace.py --game desert
@@ -98,6 +98,8 @@ python tools/recomp.py --game urban
 cmake -S . -B build -DDS_SYSTEM_SDL=ON -DDS_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ```
+
+Skip the `trace.py` / `recomp.py` lines of a game you don't have. To choose the games yourself, pass `-DDS_GAMES="desert;urban"` (each listed game must be generated). After generating another game later, re-run the `cmake -S . -B build ...` line so it is picked up.
 
 The executable is `build/StrikeCollectionHD`; the HD pack upscaler is `build/hdpack_xbrz`. `DS_SYSTEM_SDL=ON` uses the installed SDL3 package. To let CMake fetch and build SDL3 instead, omit that option; this requires network access during configuration and SDL's Linux development dependencies.
 
@@ -113,7 +115,7 @@ Requirements:
 ```
 copy "<your roms>" rom\desert_strike.bin, rom\jungle_strike.bin, rom\urban_strike.bin
 python tools/trace.py  --game desert   (and jungle, urban)
-python tools/recomp.py --game desert   (and jungle, urban)
+python tools/recomp.py --game desert   (and jungle, urban: only the games you have)
 cmake -S . -B build
 cmake --build build --config Release
 ```
