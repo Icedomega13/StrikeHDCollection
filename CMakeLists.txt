@@ -93,7 +93,7 @@ if(DS_BUILD_HOST)
     set(DS_HOST_SOURCES src/host/main.c src/host/input.c src/host/settings.c
         src/host/ui.c src/host/menu.c src/host/embedded_fonts.c src/host/hdpack.c
         src/host/rewind.c src/host/stats.c src/host/amiga.c src/host/sfxmix.c src/host/modplay.c
-        src/host/amiga_vm.c)
+        src/host/amiga_vm.c src/host/gpumon.c)
     if(WIN32)
         list(APPEND DS_HOST_SOURCES res/desertstrikehd.rc)
     endif()

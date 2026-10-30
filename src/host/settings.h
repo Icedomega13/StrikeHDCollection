@@ -5,6 +5,8 @@
 #ifndef DS_SETTINGS_H
 #define DS_SETTINGS_H
 
+#include <stdio.h>
+
 /* Genesis: everything as on the Mega Drive. Amiga: every Amiga asset that
  * is available. Remaster: what the community preferred from each version
  * (docs/13-amiga-ultimate.md). Custom: the options set one by one. */
@@ -53,6 +55,7 @@ typedef struct {
     int ff_speed;             /* fast-forward multiplier 2-8 */
     int pause_unfocused;
     int authentic_speed;      /* 1 = original CPU speed (slowdown) */
+    int display_sync;         /* 1 = one game frame per screen refresh (60 Hz screens, VSync on) */
     int launcher_intros;      /* live intros behind the game picker */
     int minimap_pos;          /* 0 lower left, 1 lower right, 2 upper right, 3 upper left */
     int minimap_threats;      /* show enemy air defences near the helicopter */
@@ -79,5 +82,6 @@ extern cheats_t g_cheat;
 void settings_defaults(settings_t *s);
 int  settings_load(const char *path);   /* 1 if the file existed */
 int  settings_save(const char *path);
+void settings_write(FILE *f, const char *prefix);   /* every setting, one "name = value" line each */
 
 #endif
