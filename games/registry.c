@@ -2,9 +2,22 @@
 #include "game.h"
 #include "util/sha1.h"
 
+/* CMake defines DS_GAME_<ID> for each game it builds (the ones whose
+ * generated/<id>/ sources exist; it stops when there are none). */
+
 extern const game_module game_desert, game_jungle, game_urban;
 
-const game_module *const g_games[] = { &game_desert, &game_jungle, &game_urban };
+const game_module *const g_games[] = {
+#if DS_GAME_DESERT
+    &game_desert,
+#endif
+#if DS_GAME_JUNGLE
+    &game_jungle,
+#endif
+#if DS_GAME_URBAN
+    &game_urban,
+#endif
+};
 const int g_game_count = (int)(sizeof g_games / sizeof g_games[0]);
 
 const game_module *game_find_sha1(const char *sha1)
