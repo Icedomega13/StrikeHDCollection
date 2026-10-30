@@ -103,6 +103,23 @@ The executable is `build/StrikeCollectionHD`; the HD pack upscaler is `build/hdp
 
 The generated game sources are derived from the ROMs and are not committed. Keep the Python virtual environment active when running the trace and recompilation tools.
 
+### Batocera (x86_64)
+
+Build a self-contained program on Linux (SDL built in, so it needs nothing from Batocera; the build machine's glibc must not be newer than Batocera's), then copy it with your ROM and the launcher:
+
+```sh
+cmake -S . -B build-batocera -DDS_SYSTEM_SDL=OFF -DDS_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Release "-DCMAKE_EXE_LINKER_FLAGS=-static-libstdc++ -static-libgcc"
+cmake --build build-batocera --parallel --target StrikeCollectionHD
+ssh root@batocera mkdir -p /userdata/system/strikehd/roms
+scp build-batocera/StrikeCollectionHD root@batocera:/userdata/system/strikehd/
+scp rom/desert_strike.bin root@batocera:/userdata/system/strikehd/roms/
+scp tools/batocera/StrikeHD.sh root@batocera:/userdata/roms/ports/
+```
+
+Then Game Settings > Update Gamelists, and the game is in Ports. The log goes to `/userdata/system/logs/strikehd.log`.
+
+On NVIDIA cards, Batocera's compositor (picom, with `unredir-if-possible = false`) keeps compositing fullscreen games and tears them: a band at a fixed height whenever the picture moves, and short sound cuts. `StrikeHD.sh` stops picom while the game runs and starts it again afterwards. Show FPS > Diagnostics reports a running compositor.
+
 ### Windows
 
 Requirements:
