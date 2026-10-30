@@ -3,10 +3,7 @@
 #include "util/sha1.h"
 
 /* CMake defines DS_GAME_<ID> for each game it builds (the ones whose
- * generated/<id>/ sources exist). */
-#if !DS_GAME_DESERT && !DS_GAME_JUNGLE && !DS_GAME_URBAN
-#error "No game enabled: define DS_GAME_DESERT, DS_GAME_JUNGLE and/or DS_GAME_URBAN"
-#endif
+ * generated/<id>/ sources exist; it stops when there are none). */
 
 extern const game_module game_desert, game_jungle, game_urban;
 
