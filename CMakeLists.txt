@@ -7,7 +7,8 @@ project(DesertStrikeHD C CXX)
 #   ds_ref          Musashi 68000 reference, the other side of lockstep
 #
 # The recompiled C is derived from your ROM and never committed. Generate it
-# first:  python tools/trace.py && python tools/recomp.py
+# first, for each game you have:
+#   python tools/trace.py --game <id> && python tools/recomp.py --game <id>
 option(DS_BUILD_HOST  "Build the SDL3 game" ON)
 option(DS_BUILD_TESTS "Build ds_test and ds_ref" ON)
 option(DS_SYSTEM_SDL  "Use an installed SDL3 instead of building it" OFF)
@@ -25,15 +26,37 @@ else()
 endif()
 
 # ---- games in the collection ----
-set(DS_GAMES desert jungle urban)
+# By default every game whose generated/<id>/ sources exist is built, so one
+# or two ROMs are enough. -DDS_GAMES="desert;urban" picks the games instead
+# (each one must then be generated).
+set(DS_ALL_GAMES desert jungle urban)
+set(DS_GAMES "" CACHE STRING "Games to build (desert;jungle;urban). Empty: every generated game")
 set(DS_GAME_SOURCES games/registry.c games/strike_world.c games/strike_minimap.c)
+set(DS_GAME_DEFS)
+set(DS_BUILT_GAMES)
 foreach(g ${DS_GAMES})
-    file(GLOB gen ${CMAKE_SOURCE_DIR}/generated/${g}/recomp_*.c)
-    if(NOT gen)
-        message(FATAL_ERROR "generated/${g}/ is empty: run `python tools/trace.py --game ${g}` and `python tools/recomp.py --game ${g}` first")
+    if(NOT g IN_LIST DS_ALL_GAMES)
+        message(FATAL_ERROR "DS_GAMES: unknown game '${g}' (known: ${DS_ALL_GAMES})")
     endif()
-    list(APPEND DS_GAME_SOURCES games/${g}/${g}.c ${gen})
 endforeach()
+foreach(g ${DS_ALL_GAMES})
+    if(DS_GAMES AND NOT g IN_LIST DS_GAMES)
+        continue()
+    endif()
+    file(GLOB gen ${CMAKE_SOURCE_DIR}/generated/${g}/recomp_*.c)
+    if(NOT gen AND DS_GAMES)
+        message(FATAL_ERROR "generated/${g}/ is empty: run `python tools/trace.py --game ${g}` and `python tools/recomp.py --game ${g}` first")
+    elseif(gen)
+        string(TOUPPER ${g} G)
+        list(APPEND DS_GAME_SOURCES games/${g}/${g}.c ${gen})
+        list(APPEND DS_GAME_DEFS DS_GAME_${G}=1)
+        list(APPEND DS_BUILT_GAMES ${g})
+    endif()
+endforeach()
+if(NOT DS_BUILT_GAMES)
+    message(FATAL_ERROR "No generated game sources: for each ROM you have, run `python tools/trace.py --game <id>` and `python tools/recomp.py --game <id>` first (ids: ${DS_ALL_GAMES})")
+endif()
+message(STATUS "Games: ${DS_BUILT_GAMES}")
 
 # ---- hardware model: bus, VDP, renderer, Z80, YM2612, PSG ----
 add_library(ds_hw STATIC
@@ -47,6 +70,7 @@ target_compile_options(ds_hw PRIVATE ${DS_FLAGS})
 add_library(ds_core STATIC src/runtime/cpu.c src/util/sha1.c ${DS_GAME_SOURCES})
 target_include_directories(ds_core PUBLIC src src/runtime games)
 target_link_libraries(ds_core PUBLIC ds_hw)
+target_compile_definitions(ds_core PRIVATE ${DS_GAME_DEFS})
 target_compile_options(ds_core PRIVATE ${DS_FLAGS})
 
 if(DS_BUILD_TESTS)
