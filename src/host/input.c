@@ -82,6 +82,37 @@ void input_defaults(bindings *b)
     b->stick_deadzone = 12000;
 }
 
+/* Modern layout (Controls > Modern Layout): the left stick flies; the
+ * triggers and bumpers fire (RT chain gun = C, RB Hydras = B, LT Hellfire = A,
+ * held LT strafes, as A does); the right stick strafes (Right Stick Strafe);
+ * the D-pad steps the objectives (left / right), fast-forwards (up, hold) and
+ * shows or hides the minimap (down); LB rewinds. The face buttons keep the
+ * Genesis A B C and Y strafes, so the classic way still works. Keyboard
+ * bindings stay as they are. */
+void input_modern(bindings *b)
+{
+    bindings kb = *b;
+    input_defaults(b);
+    memcpy(b->key, kb.key, sizeof b->key);
+    b->stick_deadzone = kb.stick_deadzone;
+    for (int a = 0; a < ACT_COUNT; a++) for (int i = 0; i < MAX_BINDS; i++) b->pad[a][i] = PAD_NONE;
+    b->pad[ACT_UP][0] = PAD_AXIS(SDL_GAMEPAD_AXIS_LEFTY, 0);
+    b->pad[ACT_DOWN][0] = PAD_AXIS(SDL_GAMEPAD_AXIS_LEFTY, 1);
+    b->pad[ACT_LEFT][0] = PAD_AXIS(SDL_GAMEPAD_AXIS_LEFTX, 0);
+    b->pad[ACT_RIGHT][0] = PAD_AXIS(SDL_GAMEPAD_AXIS_LEFTX, 1);
+    b->pad[ACT_A][0] = PAD_AXIS(SDL_GAMEPAD_AXIS_LEFT_TRIGGER, 1);  b->pad[ACT_A][1] = SDL_GAMEPAD_BUTTON_WEST;
+    b->pad[ACT_B][0] = SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER;           b->pad[ACT_B][1] = SDL_GAMEPAD_BUTTON_SOUTH;
+    b->pad[ACT_C][0] = PAD_AXIS(SDL_GAMEPAD_AXIS_RIGHT_TRIGGER, 1); b->pad[ACT_C][1] = SDL_GAMEPAD_BUTTON_EAST;
+    b->pad[ACT_START][0] = SDL_GAMEPAD_BUTTON_START;
+    b->pad[ACT_MENU][0] = SDL_GAMEPAD_BUTTON_BACK;
+    b->pad[ACT_STRAFE][0] = SDL_GAMEPAD_BUTTON_NORTH;
+    b->pad[ACT_REWIND][0] = SDL_GAMEPAD_BUTTON_LEFT_SHOULDER;
+    b->pad[ACT_MM_PREV][0] = SDL_GAMEPAD_BUTTON_DPAD_LEFT;
+    b->pad[ACT_MM_NEXT][0] = SDL_GAMEPAD_BUTTON_DPAD_RIGHT;
+    b->pad[ACT_FAST_FORWARD][0] = SDL_GAMEPAD_BUTTON_DPAD_UP;
+    b->pad[ACT_MM_TOGGLE][0] = SDL_GAMEPAD_BUTTON_DPAD_DOWN;
+}
+
 /* ---------------- controls.ini ---------------- */
 static char *trim(char *s)
 {

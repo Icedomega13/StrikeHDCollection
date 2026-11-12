@@ -9,7 +9,7 @@
 
 #define AppName "Strike Remastered Collection HD"
 #define AppExe "StrikeCollectionHD.exe"
-#define AppVersion "0.8.2"
+#define AppVersion "0.9.0"
 
 [Setup]
 AppId={{6E0B5F2A-3C1D-4B8E-9A47-5D2C1F7E8B90}

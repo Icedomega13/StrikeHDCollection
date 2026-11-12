@@ -6,13 +6,15 @@ Native PC versions of the three Sega Genesis Strike games: *Desert Strike: Retur
 - **Widescreen**: 16:10, 16:9, 21:9 and 32:9, plus "Match window". The battlefield is drawn from each game's own map data beyond the console's 512-pixel limit. Menus, maps and cutscenes stay 4:3.
 - **HD graphics packs**, with a one-click builder. The game extracts its own graphics, upscales them 4× with xBRZ (keeping dithered textures crisp), and loads the result.
 - **Status HUD**: armor, fuel, load, lives and ammo.
+- **CRT display** (Settings → Picture → CRT): the picture through [Lola Retro](https://github.com/zoran123456/lola-retro), a simulation of the whole analog TV chain, as a composite TV, an S-Video TV or an RGB monitor, flat or curved. Needs OpenGL and a graphics card. See `docs/16-crt.md`.
 - **Minimap and status HUD**: each in any corner and at any size. The minimap is the pause map, live, with the objectives (and, optionally, nearby enemy guns); LB / RB (Q / E) step through them like the pause menu.
 - **Pause menu**: save/load slots with thumbnails, full keyboard and gamepad rebinding, display, picture, audio and system settings.
 - **Cheats**: god mode, unlimited fuel, ammo and lives, campaign select.
 - **Rewind** (hold the left trigger), **autosave** on mission start and each completed objective, **gamepad rumble**, and **career stats**.
 - **Game Speed**: Smooth (no slowdown) or Original (the console's slowdown).
 - **Difficulty (prototype, Desert Strike)**: chosen on New Game. *Remastered* keeps the full speed and every bullet on screen but rebalances the damage (bullets sting less than missiles, and a crossfire can't empty your armour in an instant); *Recruit* is gentler; *Original* is the Genesis as shipped, slowdown included. See `docs/14-difficulty.md`.
-- **Launcher**: the games' intros play live behind a gamepad-friendly game picker, and a Continue / Load Game / New Game screen picks up where you left off.
+- **Launcher**: the highlighted game's intro plays live behind a gamepad-friendly game picker, and a Continue / Load Game / New Game screen picks up where you left off.
+- **Custom music** (Desert Strike): drop your own .ogg or .wav files into the music folder and they replace the songs they're named after. See `docs/15-custom-music.md`.
 - **Amiga edition for Desert Strike (work in progress)**: add your own Amiga Desert Strike disks and the game can use the Amiga's sound effects (weapons, rotor that follows your speed, rescue calls, voice lines), its ProTracker music, its title photos, and its cutscenes, including the animated ones, which run as the original Amiga programs in a small built-in Amiga emulator. Pick Genesis, Amiga or a mix under Settings → Audio → Edition. The mapping of sounds is still being tuned; the **Sound Lab** and `tools/amiga/sound_labeler.html` let you choose your own.
 - **Installer**: Inno Setup, with a ROM page that checks your dumps.
 
@@ -59,7 +61,7 @@ Host keys:
 - **M**, or hold **Esc / Back**: show or hide the minimap.
 - **Esc** or **Back:** pause menu.
 
-Everything can be rebound under **Controls**.
+Everything can be rebound under **Controls**. **Modern Layout** there sets up the pad twin-stick style: the left stick flies, RT fires the chain gun, RB the Hydras, LT a Hellfire (hold LT to strafe), the right stick strafes, LB rewinds, and the D-pad steps through the objectives (left / right), fast-forwards (up) and shows or hides the minimap (down). **Classic Layout** puts the defaults back.
 
 **Amiga edition:** Settings → Audio → **Add Amiga Disks**, and choose your Amiga *Desert Strike* `.adf` files (they are copied to `%APPDATA%\DesertStrikeHD\DesertStrikeHD\amiga\`). Nothing from the Amiga version is included. See `docs/13-amiga-ultimate.md`.
 
@@ -156,7 +158,8 @@ The project's own code is under the MIT license (`LICENSE`). Third-party compone
 - ymfm (BSD-3, Aaron Giles).
 - z80 by Nicolas Allemand (MIT; one local fix: `BIT n,(HL)` no longer writes back).
 - SDL3 (zlib).
-- stb_image, stb_image_write, stb_truetype (public domain / MIT).
+- stb_image, stb_image_write, stb_truetype, stb_vorbis (public domain / MIT).
+- Lola Retro CRT shaders (MIT, Zoki), `third_party/lola-retro`.
 - Chakra Petch font (SIL OFL 1.1).
 - Capstone (BSD), used by the tools only.
 - xBRZ (GPL-3, Zenju). It is used only in the separate `hdpack_xbrz` tool; see `tools/xbrz/License.txt`.

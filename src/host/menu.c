@@ -42,6 +42,7 @@ static const char *const ASPECT[] = { "TV Shape (original)", "Square Pixels", "S
 static const char *const WIDE[] = { "Off (4:3)", "16:10", "16:9", "21:9", "32:9", "Match window" };
 static const char *const SCALING[] = { "Sharp", "Integer Only", "Smooth", "Pixelated" };
 static const char *const SCANS[] = { "Off", "Light", "Medium", "Strong" };
+static const char *const CRTS[] = { "Off", "TV (composite)", "TV (S-Video)", "Monitor (RGB)" };
 static const char *const STRAFE[] = { "Original", "Fast (1.5x)", "Faster (2x)" };
 static const char *const DIFFICULTY[] = { "Recruit", "Remastered", "Original" };
 static const char *const SPEED[] = { "Smooth (no slowdown)", "Original (with slowdown)" };
@@ -64,6 +65,8 @@ static item tab_picture[] = {
     { IT_CHOICE, "Pixel Shape", "TV shape matches a 4:3 set of the era. Square pixels is the raw image.", &g_set.aspect, ASPECT, 3 },
     { IT_CHOICE, "Scaling", "Sharp keeps pixels crisp at any size. Integer leaves borders but is exact.", &g_set.scaling, SCALING, 4 },
     { IT_CHOICE, "Scanlines", "Darkens alternate lines like a CRT.", &g_set.scanlines, SCANS, 4 },
+    { IT_CHOICE, "CRT", "A real tube, simulated (Lola Retro): the console's video signal through the cable, the TV's electron beam and phosphor mask. Composite softens dithering like a living-room TV. Needs the OpenGL renderer (switches to it after a restart) and a graphics card.", &g_set.crt, CRTS, 4 },
+    { IT_CHOICE, "CRT Curvature", "Curved glass and rounded corners on the CRT picture.", &g_set.crt_curved, OFF_ON, 2 },
     { IT_CHOICE, "Sprite Flicker", "The console could show only 20 sprites per line; Off draws them all.", &g_set.sprite_flicker, FLICKER, 2 },
     { IT_CHOICE, "Status HUD", "Shows armor, fuel, load and lives while flying.", &g_set.status_hud, OFF_ON, 2 },
     { IT_CHOICE, "HUD Position", "Which corner the status HUD sits in. If the minimap is in the same corner, it moves out of the way.", &g_set.hud_pos, HUDPOS, 4 },
@@ -84,6 +87,8 @@ static item tab_audio[] = {
     { IT_SLIDER, "Amiga Effects Volume", "Level of the Amiga samples against the Genesis sound.", &g_set.amiga_vol, 0, 0, 0, 150, 5, "%" },
     { IT_CHOICE, "Music", "Amiga plays the music from your Amiga Desert Strike disks: title, briefings, game over and more (Sound Lab: , . to change).", &g_set.amiga_music, SFXSET, 2 },
     { IT_SLIDER, "Amiga Music Volume", "Level of the Amiga music.", &g_set.amiga_music_vol, 0, 0, 0, 150, 5, "%" },
+    { IT_CHOICE, "Custom Music", "Your own .ogg or .wav files in the music folder of the settings folder (music/desert) replace the songs they're named after: title.ogg, briefing.ogg, game over.ogg ... See README.txt there. Desert Strike for now.", &g_set.custom_music, OFF_ON, 2 },
+    { IT_SLIDER, "Custom Music Volume", "Level of your own music files.", &g_set.custom_music_vol, 0, 0, 0, 150, 5, "%" },
     { IT_CHOICE, "Intro", "Amiga opens Desert Strike with the Amiga title photographs and music, before the Genesis title. The game picker is unchanged.", &g_set.amiga_intro, SFXSET, 2 },
     { IT_CHOICE, "Cutscenes", "Amiga shows the Amiga version of the briefing and story pictures, animated where the Amiga animates them; the Genesis text and timing stay.", &g_set.amiga_cutscenes, SFXSET, 2 },
     { IT_CHOICE, "Amiga Extras", "Amiga sounds where the Genesis is silent: the objective-complete jingle, and (assigned in the Sound Lab) voice lines for mission start, low fuel and a lost life.", &g_set.amiga_extras, OFF_ON, 2 },
@@ -309,9 +314,14 @@ static void activate_sub(void)
         else adjust(it, +1);
     } else if (main_focus == M_CONTROLS) {
         if (ctl_row == ACT_COUNT) {
-            input_defaults(&g_bind);
+            if (ctl_col >= 2) {
+                input_modern(&g_bind);
+                set_note("Modern layout: left stick flies, RT gun, RB Hydras, LT Hellfire, right stick strafes, LB rewind.");
+            } else {
+                input_defaults(&g_bind);
+                set_note("Classic layout: the defaults, Genesis A B C on the face buttons.");
+            }
             if (H->save_controls) H->save_controls();
-            set_note("Controls reset to defaults.");
         } else {
             capturing = 1;
             input_capture_start(ctl_col >= 2);
@@ -703,10 +713,13 @@ static void draw_controls(void)
     for (int r = ctl_scroll; r < rows && r < ctl_scroll + vis; r++) {
         float ry = y + 46 + (r - ctl_scroll) * 30;
         if (r == ACT_COUNT) {
-            int f = pane == 1 && ctl_row == r;
-            ui_rect(c0 - 10, ry + 2, 230, 26, f ? C_SEL : C_PANEL2);
-            ui_text(UI_SMALL, c0, ry + 5, f ? C_ACCENT : C_TEXT, "Reset to Defaults");
-            add_hit(c0 - 10, ry + 2, 230, 26, 1, 4 * ACT_COUNT, 0);
+            int f0 = pane == 1 && ctl_row == r && ctl_col < 2, f1 = pane == 1 && ctl_row == r && ctl_col >= 2;
+            ui_rect(c0 - 10, ry + 2, 300, 26, f0 ? C_SEL : C_PANEL2);
+            ui_text(UI_SMALL, c0, ry + 5, f0 ? C_ACCENT : C_TEXT, "Classic Layout (defaults)");
+            add_hit(c0 - 10, ry + 2, 300, 26, 1, 4 * ACT_COUNT, 0);
+            ui_rect(c0 + 310, ry + 2, 300, 26, f1 ? C_SEL : C_PANEL2);
+            ui_text(UI_SMALL, c0 + 320, ry + 5, f1 ? C_ACCENT : C_TEXT, "Modern Layout (triggers fire)");
+            add_hit(c0 + 310, ry + 2, 300, 26, 1, 4 * ACT_COUNT + 2, 0);
             continue;
         }
         if (r == ACT_PAD_COUNT) ui_rect(x + 14, ry - 2, w - 28, 1, C_EDGE_D);

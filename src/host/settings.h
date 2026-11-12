@@ -29,6 +29,8 @@ typedef struct {
     int aspect;               /* ASPECT_* */
     int scaling;              /* SCALE_* */
     int scanlines;            /* SCAN_* */
+    int crt;                  /* CRT display: 0 off, 1 composite TV, 2 S-Video TV, 3 RGB monitor (docs/16-crt.md) */
+    int crt_curved;           /* curved glass */
     int sprite_flicker;       /* 1 = original per-line sprite limits */
     int widescreen;           /* WS_* */
     int hd_graphics;          /* use HD packs when present */
@@ -46,6 +48,8 @@ typedef struct {
     int amiga_vol;            /* Amiga effects level 0-150 % */
     int amiga_music;          /* play the Amiga music (modules) where one is assigned */
     int amiga_music_vol;      /* Amiga music level 0-150 % */
+    int custom_music;         /* play the player's own files from the music folder (docs/15-custom-music.md) */
+    int custom_music_vol;     /* their level, 0-150 % */
     int amiga_intro;          /* Desert Strike opens with the Amiga title photographs */
     int amiga_cutscenes;      /* cutscene pictures shown as their animated Amiga versions */
     int amiga_extras;         /* Amiga sounds for moments the Genesis is silent (objective jingle, warnings) */

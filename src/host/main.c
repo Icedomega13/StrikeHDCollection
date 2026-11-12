@@ -34,10 +34,13 @@
 #include "stats.h"
 #include "amiga.h"
 #include "amiga_vm.h"
+#include "musicpack.h"
+#include "crt.h"
 #include "sfxmix.h"
 #include "modplay.h"
 
 static void music_stop(void);
+static int custom_music_play(int key);
 /* Amiga extras: moments the Genesis has no sound for (docs/13-amiga-ultimate.md).
  * Ids sit after the game's effect ids in amiga_sfx.ini and the Sound Lab. */
 enum { EV_OBJECTIVE = 1001, EV_MISSION_START, EV_LOW_FUEL, EV_LIFE_LOST, EV_RESCUE_FAR, EV_RESCUE_NEAR };
@@ -1287,6 +1290,24 @@ static void draw_game(int ow, int oh)
 
     SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
     SDL_RenderClear(ren);
+    /* CRT: the native frame through the tube simulation, at the picture's size on screen */
+    static SDL_Texture *crt_tex;
+    static int crt_w, crt_h, crt_warned;
+    if (g_set.crt && crt_supported(ren)) {
+        if (S > 1) SDL_UpdateTexture(tex, &(SDL_Rect){ 0, 0, fb_w, VDP_H }, fb, VDP_MAX_W * 4);   /* the native frame, not the HD art */
+        int tw = (int)dw, th = (int)dh;
+        if (!crt_tex || crt_w != tw || crt_h != th) {
+            if (crt_tex) SDL_DestroyTexture(crt_tex);
+            crt_tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_TARGET, tw, th);
+            crt_w = tw; crt_h = th;
+        }
+        crt_settings cs = { g_set.crt == 1 ? 1 : g_set.crt == 2 ? 2 : 3, g_set.crt_curved, -1 };
+        if (crt_tex && crt_render(ren, tex, fb_w, VDP_H, crt_tex, &cs, (unsigned)g_frame)) {
+            SDL_RenderTexture(ren, crt_tex, NULL, &dst);
+            return;
+        }
+        if (!crt_warned) { crt_warned = 1; say("CRT: the shader couldn't run on this graphics card"); }
+    } else if (g_set.crt && !crt_warned) { crt_warned = 1; say("CRT needs the OpenGL renderer: restart the game to switch"); }
     if (g_set.scaling == SCALE_SHARP && S > 1 && dh <= VDP_H * S) {
         /* HD art already has the detail: just filter it down */
         SDL_SetTextureScaleMode(src_tex, SDL_SCALEMODE_LINEAR);
@@ -1418,7 +1439,7 @@ static const struct { const char *game; int id; const char *sample; int rate; } 
     { "desert", SFX_ROTOR, "aCF1D882ECEBF7CCE", 7389 },   /* rotor: fx 2, looped while the Genesis rotor (FM channel 5) plays */
 };
 static int nsfxmap;
-static char amiga_dir[1100], sfxmap_path[1100];
+static char amiga_dir[1100], sfxmap_path[1100], music_dir[1100];
 static int lab_last = -1, lab_hist[6], lab_nhist;
 static uint64_t lab_flash;
 
@@ -2016,7 +2037,7 @@ static void music_set(int key, const char *module)
     musmap_save();
 }
 
-static void music_stop(void) { mod_stop(); mus_playing[0] = 0; }
+static void music_stop(void) { mod_stop(); musicpack_stop(); mus_playing[0] = 0; }
 
 static int music_play(int key)
 {
@@ -2080,7 +2101,14 @@ static int host_music_hook(int id)
     last_id = id;
     if (g_sound_lab) { lab_mus = key; lab_flash = SDL_GetTicksNS() + 1500000000ull; }
     if (SDL_getenv("DS_SFX_DEBUG")) SDL_Log("music %d -> %s (frame %llu)", key, music_module(key) ? music_module(key) : "genesis", (unsigned long long)g_frame);
+    if (g_set.custom_music && custom_music_play(key)) {      /* the player's own file */
+        mod_stop();
+        int r = genesis_on ? 2 : 1;
+        genesis_on = 0;
+        return r;
+    }
     if (g_set.amiga_music && music_play(key)) {
+        musicpack_stop();
         int r = genesis_on ? 2 : 1;
         genesis_on = 0;
         return r;
@@ -2088,6 +2116,66 @@ static int host_music_hook(int id)
     music_stop();
     if (id != 7280) genesis_on = 1;                  /* the life-lost jingle ends by itself */
     return 0;
+}
+
+/* The music folder and its README (made once). */
+static void write_music_readme(void)
+{
+    char d[1200], f[1300];
+    SDL_snprintf(d, sizeof d, "%sdesert", music_dir);
+    SDL_CreateDirectory(d);
+    SDL_snprintf(f, sizeof f, "%sREADME.txt", music_dir);
+    SDL_PathInfo info;
+    if (SDL_GetPathInfo(f, &info)) return;
+    static const char txt[] =
+        "Custom music for Strike Remastered Collection HD\n"
+        "================================================\n\n"
+        "Put your own .ogg or .wav files in the game's folder here (desert/ for now).\n"
+        "Each file replaces the song it is named after, ahead of the Amiga and Genesis music.\n"
+        "Turn it on or off in Settings > Audio > Custom Music.\n\n"
+        "Name a file after the song, or start its name with the song's number:\n\n"
+        "  title.ogg            EA logo and title screen (105, 117)\n"
+        "  story.ogg            the story, \"The Middle East\" (9)\n"
+        "  refinery.ogg         the story, the refinery (107)\n"
+        "  bunker.ogg           the story, the madman's bunker (3)\n"
+        "  briefing.ogg         every campaign briefing (or one per campaign: 100117, 100104, 100004, 100109)\n"
+        "  campaign complete.ogg  (118, plays once)\n"
+        "  mission failed.ogg   (2, plays once)\n"
+        "  game over.ogg        (300003, plays once)\n"
+        "  ending.ogg           the ending and credits (108, 10)\n\n"
+        "Examples: \"title.ogg\", \"117 my title theme.ogg\", \"100104.wav\" (the second campaign's briefing).\n"
+        "Songs loop, except the ones marked \"plays once\". The Sound Lab (Settings > Audio) shows the number of each song as it plays.\n";
+    SDL_IOStream *io = SDL_IOFromFile(f, "w");
+    if (io) { SDL_WriteIO(io, txt, sizeof txt - 1); SDL_CloseIO(io); }
+}
+
+/* Custom music: <settings>/music/<game>/, by key or by the song's name. */
+static int custom_music_play(int key)
+{
+    if (!game) return 0;
+    char dir[1200], path[1200];
+    SDL_snprintf(dir, sizeof dir, "%s%s/", music_dir, game->id);
+    const char *name = "";                               /* the names README.txt lists */
+    if (key >= 300000) name = "game over";
+    else if (key >= 100000) name = "briefing";
+    else switch (key) {
+    case 105: case 117: name = "title"; break;
+    case 9: name = "story"; break;
+    case 107: name = "refinery"; break;
+    case 3: name = "bunker"; break;
+    case 118: name = "campaign complete"; break;
+    case 2: name = "mission failed"; break;
+    case 108: case 10: name = "ending"; break;
+    case 7280: name = "life lost"; break;
+    }
+    int alt = key == 105 ? 117 : key == 117 ? 105 : key == 108 ? 10 : key == 10 ? 108 : -1;   /* the same song, two numbers */
+    if (!musicpack_find(dir, key, name, path, sizeof path) && (alt < 0 || !musicpack_find(dir, alt, name, path, sizeof path))) return 0;
+    musicpack_set_volume(g_set.custom_music_vol / 100.0f);
+    int jingle = key == 2 || key == 300003 || key == 7280 || key == 118;   /* mission failed, game over, life lost, campaign complete */
+    if (!musicpack_start(path, AUDIO_RATE, !jingle)) return 0;
+    SDL_strlcpy(mus_playing, "custom", sizeof mus_playing);
+    if (SDL_getenv("DS_SFX_DEBUG")) SDL_Log("music %d -> custom %s", key, path);
+    return 1;
 }
 
 /* Sound Lab: , . step the module for the last song (first entry: Genesis). */
@@ -2233,6 +2321,7 @@ static void pump_audio(int keep)
     while ((n = snd_read(buf, 4096)) > 0) {
         duck_game_audio(buf, n);
         mod_mix(buf, n);
+        musicpack_mix(buf, n);
         sfx_mix(buf, n);
         {   /* test: DS_AUDIO_DUMP=<file> records the mixed output (s16 stereo, AUDIO_RATE) */
             static FILE *dump; static int tried;
@@ -2368,8 +2457,22 @@ static void att_volume(void)
 static void att_update(void)
 {
     uint64_t now = SDL_GetTicksNS();
+    /* Follow the selection: while a game's card is highlighted (for 0.4 s,
+     * so scrolling past doesn't churn), that game's intro plays behind the
+     * picker, and stays; on the Settings / Quit rows the games take turns. */
+    static int want = -1;
+    static uint64_t want_since;
+    int w = sel_row == 0 && sel_card >= 0 && sel_card < g_game_count && rom_path_of[sel_card][0] ? sel_card : -1;
+    if (w != want) { want = w; want_since = now; }
+    int settled = want >= 0 && now - want_since > 400000000ull;
+    if (settled && att.cur != want) {
+        if (att.phase == 1) att.phase = 0;                       /* warming up another game: drop it */
+        else if (att.phase == 2) { att.phase = 3; att.t0 = now; att.t0 -= (uint64_t)((1.0f - att.alpha) * ATT_FADE_NS); }
+    }
     if (att.phase == 0) {
         int cand[MAX_GAMES], nc = 0;
+        if (settled) cand[nc++] = want;
+        else
         for (int i = 0; i < g_game_count; i++) if (rom_path_of[i][0] && i != att.last) cand[nc++] = i;
         if (!nc && att.last >= 0 && rom_path_of[att.last][0]) cand[nc++] = att.last;
         if (!nc) { att.cur = -1; return; }
@@ -2397,7 +2500,7 @@ static void att_update(void)
     uint64_t t = now - att.t0;
     if (att.phase == 2) {
         att.alpha = t < ATT_FADE_NS ? (float)t / ATT_FADE_NS : 1.0f;
-        if (t > ATT_SHOW_NS) { att.phase = 3; att.t0 = now; }
+        if (t > ATT_SHOW_NS && !(settled && att.cur == want)) { att.phase = 3; att.t0 = now; }
     } else {
         att.alpha = t < ATT_FADE_NS ? 1.0f - (float)t / ATT_FADE_NS : 0.0f;
         if (t >= ATT_FADE_NS) { att.last = att.cur; att.phase = 0; att.alpha = 0; if (aud) SDL_ClearAudioStream(aud); }
@@ -2874,6 +2977,7 @@ static void feed_music_only(void)
     while (SDL_GetAudioStreamQueued(aud) < 4 * AUDIO_RATE / 15) {
         memset(buf, 0, sizeof buf);
         mod_mix(buf, 1024);
+        musicpack_mix(buf, 1024);
         SDL_PutAudioStreamData(aud, buf, sizeof buf);
     }
 }
@@ -3399,6 +3503,8 @@ int main(int argc, char **argv)
     stats_load(stats_path);
     rw_init(cpu_state_size(), 48u << 20);
     SDL_snprintf(amiga_dir, sizeof amiga_dir, "%samiga", pref);
+    SDL_snprintf(music_dir, sizeof music_dir, "%smusic/", pref);
+    write_music_readme();
     SDL_snprintf(sfxmap_path, sizeof sfxmap_path, "%samiga_sfx.ini", pref);
     sfxmap_load();
     sfxmap_add_defaults();
@@ -3461,7 +3567,7 @@ int main(int argc, char **argv)
     win = SDL_CreateWindow(APP_TITLE, g_set.window_w, g_set.window_h, SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
     /* Renderer is selected at launch. Environment setting SDL_RENDER_DRIVER
      * retains SDL's normal higher priority as an override. */
-    if (g_set.renderer == RENDERER_OPENGL) SDL_SetHint(SDL_HINT_RENDER_DRIVER, "opengl");
+    if (g_set.renderer == RENDERER_OPENGL || (g_set.crt && g_set.renderer == RENDERER_AUTO)) SDL_SetHint(SDL_HINT_RENDER_DRIVER, "opengl");   /* CRT runs on OpenGL */
     else if (g_set.renderer == RENDERER_SOFTWARE) SDL_SetHint(SDL_HINT_RENDER_DRIVER, "software");
     ren = win ? SDL_CreateRenderer(win, 0) : 0;
     if (win && !ren && g_set.renderer != RENDERER_AUTO) {   /* chosen backend unavailable: let SDL pick */
