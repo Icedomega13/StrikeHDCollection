@@ -127,6 +127,18 @@ static void on_fatal(void)
     if (flog) fflush(flog);
 }
 
+/* DS_DMG_PROBE=1: log every weapon hit (target, weapon entry, damage) for
+ * the difficulty work; the damage is left as it is. */
+static int dmg_probe(uint32_t target, uint32_t weapon, int dmg)
+{
+    fprintf(stderr, "probe frame %llu tgt %06X w %06X dmg %d p1 %06X p2 %06X p3 %06X :",
+            (unsigned long long)g_frame, (unsigned)(target & 0xFFFFFF), (unsigned)(weapon & 0xFFFFFF), dmg,
+            (unsigned)(R32(0xFF251C) & 0xFFFFFF), (unsigned)(R32(0xFF29E8) & 0xFFFFFF), (unsigned)(R32(0xFF49B4) & 0xFFFFFF));
+    for (int i = 0; i < 16; i += 2) fprintf(stderr, " %04X", (unsigned)R16(weapon + i));
+    fprintf(stderr, "\n");
+    return dmg;
+}
+
 int main(int argc, char **argv)
 {
     if (argc < 5) {
@@ -167,6 +179,7 @@ int main(int argc, char **argv)
     }
     if (ram_every) { snprintf(path, sizeof path, "%s/ram.bin", outdir); ramf = fopen(path, "wb"); }
     gen_frame_cb = on_frame;
+    if (getenv("DS_DMG_PROBE")) g_damage_hook = dmg_probe;
     { const char *e = getenv("DS_SFX_LOG"); if (e) { sfxlog = fopen(e, "w"); g_sfx_hook = sfx_logger; g_music_hook = music_logger; } }
     cpu_fatal_hook = on_fatal;
     /* Same frame-stepping loop the PC host uses. */

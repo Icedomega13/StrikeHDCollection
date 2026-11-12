@@ -91,12 +91,14 @@ static item tab_audio[] = {
     { IT_SLIDER, "Custom Music Volume", "Level of your own music files.", &g_set.custom_music_vol, 0, 0, 0, 150, 5, "%" },
     { IT_CHOICE, "Intro", "Amiga opens Desert Strike with the Amiga title photographs and music, before the Genesis title. The game picker is unchanged.", &g_set.amiga_intro, SFXSET, 2 },
     { IT_CHOICE, "Cutscenes", "Amiga shows the Amiga version of the briefing and story pictures, animated where the Amiga animates them; the Genesis text and timing stay.", &g_set.amiga_cutscenes, SFXSET, 2 },
-    { IT_CHOICE, "Amiga Extras", "Amiga sounds where the Genesis is silent: the objective-complete jingle, and (assigned in the Sound Lab) voice lines for mission start, low fuel and a lost life.", &g_set.amiga_extras, OFF_ON, 2 },
+    { IT_CHOICE, "Amiga Extras", "Amiga sounds where the Genesis is silent: the objective-complete jingle, and (assigned in the Sound Lab) voice lines for mission start, low fuel, low armour and a lost life.", &g_set.amiga_extras, OFF_ON, 2 },
     { IT_BUTTON, "Add Amiga Disks", "Pick your Desert Strike Amiga disk images (.adf). They are copied to the amiga folder in the settings folder.", 0, 0, 0, 0, 0, 0, 0, add_amiga },
     { IT_CHOICE, "Sound Lab", "[ ] picks the Amiga sample for the last effect, - = its pitch, 0 back to Genesis, \\ replays it. , . pick the Amiga music for the last song.", &g_sound_lab, OFF_ON, 2 },
 };
 static item tab_system[] = {
-    { IT_CHOICE, "Difficulty", "Desert Strike. Remastered: full speed, but bullets hurt less and a crossfire can only take so much armour a second. Recruit: gentler still. Original: damage as on the Genesis.", &g_set.difficulty, DIFFICULTY, 3 },
+    { IT_CHOICE, "Difficulty", "This game's difficulty, kept with its saves. Remastered: full speed, but bullets hurt less and a crossfire can only take so much armour a second. Recruit: gentler still. Original: damage as on the Genesis.", &g_difficulty, DIFFICULTY, 3 },
+    { IT_CHOICE, "Threat Markers", "Red arrows at the edge of the picture point to enemy guns and missiles just off screen. Recruit and Remastered only: Original shows only what the Genesis showed.", &g_set.threat_markers, OFF_ON, 2 },
+    { IT_CHOICE, "Low Armor Warning", "Below a quarter of your armour the armour bar pulses red (shown even with the status HUD off), and with Amiga Extras on the Amiga's computer voice says \"Warning\".", &g_set.armor_warning, OFF_ON, 2 },
     { IT_CHOICE, "Strafe Speed", "Desert Strike: how fast the helicopter sidesteps while strafing (A held, or the strafe button). Original is the Genesis speed, about a fifth of full flight.", &g_set.strafe_speed, STRAFE, 3 },
     { IT_CHOICE, "Right Stick Strafe", "Desert Strike: push the right stick left or right to strafe that way (twin-stick style). Off frees the right stick for your own bindings.", &g_set.rstick_strafe, OFF_ON, 2 },
     { IT_CHOICE, "Game Speed", "Smooth gives the game a faster CPU so busy scenes never slow down. Original matches the console.", &g_set.authentic_speed, SPEED, 2 },
@@ -604,6 +606,11 @@ static void draw_slots(int saving)
             SDL_snprintf(t, sizeof t, "%02d:%02d", hh, mi);
             ui_text(UI_SMALL, cx + tw + 16, cy + 38, C_DIM, d);
             ui_text(UI_SMALL, cx + tw + 16, cy + 60, C_DIM, t);
+            const char *dn = SDL_strchr(when, '|');     /* the save's difficulty, on the picture's foot */
+            if (dn) {
+                ui_rect(cx + 6, cy + 6 + tht - 24, tw, 24, ui_rgba(10, 12, 9, 190));
+                ui_text_center(UI_SMALL, cx + 6 + tw / 2, cy + 6 + tht - 23, C_TEXT, dn + 1);
+            }
         }
         if (f) ui_frame(cx, cy, cw, chh - 6, 2, C_ACCENT);
         add_hit(cx, cy, cw, chh - 6, 1, i, 0);

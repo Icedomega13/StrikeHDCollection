@@ -37,7 +37,9 @@ typedef struct {
     int ncells;
 } search;
 
-static void add(search *s, int x, int y)
+/* A unit: x, y where the pause map draws it; live, lx, ly whether it is in
+ * play and where it is now (threat markers). */
+static void add_live(search *s, int x, int y, int live, int lx, int ly)
 {
     if (!s->all) {
         if (s->found >= 64) return;
@@ -51,7 +53,9 @@ static void add(search *s, int x, int y)
     game_mm_mark *m = &o->m[o->n++];
     m->x = (int16_t)x; m->y = (int16_t)y;
     m->obj = (uint8_t)s->obj; m->main = (uint8_t)s->main;
+    m->live = (uint8_t)live; m->lx = (int16_t)lx; m->ly = (int16_t)ly;
 }
+static void add(search *s, int x, int y) { add_live(s, x, y, 1, x, y); }   /* fixed sites */
 
 /* Desert: entries in `carried` that point at unit a2 hide it unless their
  * bit 0 is set ($0043BC). */
@@ -66,6 +70,7 @@ static int desert_carried_ok(const strike_mm_cfg *c, uint32_t a2)
     }
     return 1;
 }
+
 
 static void search_desert(search *s)
 {
@@ -91,7 +96,8 @@ static void search_desert(search *s)
             if (!g || g != s->group || ms8(a5 + 0x17) <= 0) continue;
         } else if (ms16(mptr(a5) + 0xA) != s->type) continue;
         if ((s->flags & 2) && !desert_carried_ok(c, a)) continue;
-        add(s, ms16(a5 + 0x10), ms16(a5 + 0xE));
+        /* the entry's +$E / +$12 follow the unit; +4 is its object once spawned */
+        add_live(s, ms16(a5 + 0x10), ms16(a5 + 0xE), mptr(a + 4) != 0, ms16(a + 0xE), ms16(a + 0x12));
     }
 }
 
@@ -122,13 +128,13 @@ static void search_jungle(search *s)
             int g = iabs(ms8(a5 + 0x17));
             if (!g || g != s->group) { a = next; continue; }
         } else if (ms16(mptr(a5) + 0xA) != s->type) { a = next; continue; }
-        int x = ms16(a5 + 0xE), y = ms16(a5 + 0xC);
+        int x = ms16(a5 + 0xE), y = ms16(a5 + 0xC), live = 0;
         if (big) {
             x = ms16(a + 0xE); y = ms16(a + 0x12);
             uint32_t v = mptr(a + 4);
-            if (v) { uint32_t p = mptr(v + 0x22); x = ms16(p); y = ms16(p + 4); }
+            if (v) { uint32_t p = mptr(v + 0x22); x = ms16(p); y = ms16(p + 4); live = 1; }
         }
-        add(s, x, y);
+        add_live(s, x, y, live, x, y);
         a = next;
     }
 }

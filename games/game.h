@@ -23,6 +23,8 @@ typedef struct {
     int16_t x, y;
     uint8_t obj;               /* index in the pause map's list */
     uint8_t main;              /* 1: a mission objective (shown at all times) */
+    uint8_t live;              /* 1: the unit is in play (spawned, or a fixed site) */
+    int16_t lx, ly;            /* where it is now (x, y are where the pause map puts it) */
 } game_mm_mark;
 typedef struct {
     uint32_t level;            /* identifies the level (terrain cache key) */
@@ -77,6 +79,13 @@ typedef struct game_module {
     /* All units of a list entry's type (out->m, out->n), whether or not it is selected. */
     int (*minimap_units)(int index, game_minimap *out);
     const game_mm_view *mm_view;
+    /* Difficulty (docs/14-difficulty.md): what a weapon hit is, from the
+     * damage hook's target and weapon entry: -1 not the player, 0 the
+     * bullet spray (guns, AA guns, tanks), 1 anything else. */
+    int (*hit_class)(uint32_t target, uint32_t weapon);
+    /* World position of the playfield's top-left pixel (the ground layer's
+     * camera); 0 if unavailable. Only meaningful while ws_active(). */
+    int (*camera)(int *x, int *y);
 } game_module;
 
 extern const game_module *const g_games[];

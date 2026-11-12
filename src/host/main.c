@@ -43,7 +43,7 @@ static void music_stop(void);
 static int custom_music_play(int key);
 /* Amiga extras: moments the Genesis has no sound for (docs/13-amiga-ultimate.md).
  * Ids sit after the game's effect ids in amiga_sfx.ini and the Sound Lab. */
-enum { EV_OBJECTIVE = 1001, EV_MISSION_START, EV_LOW_FUEL, EV_LIFE_LOST, EV_RESCUE_FAR, EV_RESCUE_NEAR };
+enum { EV_OBJECTIVE = 1001, EV_MISSION_START, EV_LOW_FUEL, EV_LIFE_LOST, EV_RESCUE_FAR, EV_RESCUE_NEAR, EV_LOW_ARMOR };
 #define SFX_ROTOR 1010                      /* the helicopter's rotor loop (amiga_sfx.ini id) */
 static void rotor_frame(void);
 static void scene_frame(void);
@@ -380,10 +380,23 @@ static const game_module *add_rom_dialog(void)
 #define ST_HDR     (8 + 8 + 8 + THUMB_W * THUMB_H * 4)
 
 static int watch_reset = 1;                 /* re-baseline the status watcher (after loads, rewind) */
+/* The difficulty of the game being played (docs/14-difficulty.md). Each
+ * save keeps its own (byte 15 of the state header); g_set.difficulty is the
+ * one a New Game starts with, the last one chosen. */
+int g_difficulty = 1;
+static const char *const difficulty_name[3] = { "Recruit", "Remastered", "Original" };
+static struct { uint64_t frame[64]; int dmg[64]; int n, pos; } dmg_win;
+static int difficulty_set = 1;              /* g_difficulty as last set here (not by the menu) */
+static void set_difficulty(int d)
+{
+    g_difficulty = difficulty_set = d < 0 ? 0 : d > 2 ? 2 : d;
+    memset(&dmg_win, 0, sizeof dmg_win);
+}
+
 #define RESUME_SLOT MENU_SLOTS              /* written when the game is left mid-play; not in the slot grid */
 static int resume_worthy;                   /* the playfield was reached this session */
 #define THREAT_MAX 48
-static struct { int n; int16_t x[THREAT_MAX], y[THREAT_MAX]; } threats;
+static struct { int n; int16_t x[THREAT_MAX], y[THREAT_MAX], lx[THREAT_MAX], ly[THREAT_MAX]; uint8_t live[THREAT_MAX]; } threats;
 static int load_fresh;                      /* a state was loaded: the next level seen is not a new mission */
 static SDL_Texture *slot_tex[MENU_SLOTS];
 static int slot_known[MENU_SLOTS], slot_has[MENU_SLOTS];
@@ -420,6 +433,7 @@ static int write_state(int slot)
     uint8_t *b = SDL_calloc(1, ST_HDR + n);
     memcpy(b, ST_MAGIC, 8);
     SDL_strlcpy((char *)b + 8, game->id, 8);
+    b[15] = (uint8_t)(1 + g_difficulty);          /* the game's difficulty (0 in older states: unknown) */
     SDL_Time t = 0;
     SDL_GetCurrentTime(&t);
     memcpy(b + 16, &t, 8);
@@ -450,8 +464,11 @@ static int load_slot(int slot)
     uint8_t *b = SDL_LoadFile(path, &n);
     if (!b) { say("That slot is empty"); return 0; }
     const uint8_t *st = 0;
-    if (n == ST_HDR + cpu_state_size() && !memcmp(b, ST_MAGIC, 8) && !SDL_strcmp((char *)b + 8, game->id))
+    int diff = -1;
+    if (n == ST_HDR + cpu_state_size() && !memcmp(b, ST_MAGIC, 8) && !SDL_strcmp((char *)b + 8, game->id)) {
         st = b + ST_HDR;
+        if (b[15] >= 1 && b[15] <= 3) diff = b[15] - 1;
+    }
     else if (n == 16 + cpu_state_size() && !memcmp(b, "DSHDSTATE", 9) && !SDL_strcmp((char *)b + 9, game->id))
         st = b + 16;
     int ok = st && cpu_state_load(st);
@@ -462,6 +479,7 @@ static int load_slot(int slot)
         rw_clear();
         watch_reset = 1;
         load_fresh = 1;                          /* the level it lands in is not a new mission */
+        if (diff >= 0) set_difficulty(diff);     /* the save's own difficulty; older saves keep the current one */
         say(slot == RESUME_SLOT ? "Welcome back" : slot ? "State loaded" : "Quick state loaded");
     } else {
         say("That state is from another version");
@@ -483,8 +501,10 @@ static int slot_info(int slot, char *when, size_t wn, SDL_Texture **thumb)
         if (b) {
             slot_has[slot] = 1;
             SDL_Time t = 0;
+            int sd = -1;
             if (n >= ST_HDR && !memcmp(b, ST_MAGIC, 8)) {
                 memcpy(&t, b + 16, 8);
+                if (b[15] >= 1 && b[15] <= 3) sd = b[15] - 1;
                 slot_tex[slot] = SDL_CreateTexture(ren, SDL_PIXELFORMAT_XRGB8888, SDL_TEXTUREACCESS_STATIC, THUMB_W, THUMB_H);
                 if (slot_tex[slot]) {
                     SDL_UpdateTexture(slot_tex[slot], 0, b + 24, THUMB_W * 4);
@@ -496,8 +516,8 @@ static int slot_info(int slot, char *when, size_t wn, SDL_Texture **thumb)
             }
             SDL_DateTime dt;
             if (t && SDL_TimeToDateTime(t, &dt, true))
-                SDL_snprintf(slot_when[slot], sizeof slot_when[slot], "%04d-%02d-%02d %02d:%02d",
-                             dt.year, dt.month, dt.day, dt.hour, dt.minute);
+                SDL_snprintf(slot_when[slot], sizeof slot_when[slot], "%04d-%02d-%02d %02d:%02d%s%s",
+                             dt.year, dt.month, dt.day, dt.hour, dt.minute, sd >= 0 ? "|" : "", sd >= 0 ? difficulty_name[sd] : "");
             SDL_free(b);
         }
     }
@@ -612,6 +632,10 @@ static void apply_edition(void)
 
 static void apply_settings(void)
 {
+    if (g_difficulty != difficulty_set) {        /* changed in Settings: this game, and the next New Game */
+        set_difficulty(g_difficulty);
+        g_set.difficulty = g_difficulty;
+    }
     apply_edition();
     apply_window_mode();
     SDL_SetRenderVSync(ren, g_set.vsync ? 1 : 0);
@@ -664,11 +688,38 @@ static SDL_FRect game_dst;                   /* where the game image was drawn *
  */
 static float hud_box[4];                     /* where the status HUD was drawn (the minimap avoids it) */
 static uint64_t hud_box_frame = (uint64_t)-1;
+/* Low armour (docs/14-difficulty.md): 0..1, a slow pulse, while the armour
+ * is at or below a quarter; -1 when it isn't (or the warning is off). */
+static float armor_pulse(const game_hud *h)
+{
+    if (!g_set.armor_warning || h->armor_max <= 0 || h->armor <= 0 || h->armor * 4 > h->armor_max) return -1;
+    float t = (float)(SDL_GetTicks() % 1000000) / 1000.0f;
+    return 0.5f + 0.5f * SDL_sinf(t * 2 * SDL_PI_F * 1.6f);      /* 1.6 beats a second */
+}
+
+/* The armour bar alone, pulsing, when the status HUD is off. */
+static void draw_armor_alert(const game_hud *h, float pulse, float x0, float y0, float x1, float y1, float u)
+{
+    ui_font f = u < 1.25f ? UI_SMALL : UI_BODY;
+    float lh = ui_line_h(f) * 0.92f, pad = 7 * u, lab = ui_text_w(f, "ARMOR") + 10 * u, barw = 72 * u;
+    float w = pad * 2 + lab + barw, hgt = pad * 2 + lh;
+    float x = g_set.hud_pos & 1 ? x1 - 14 * u - w : x0 + 14 * u, y = g_set.hud_pos & 2 ? y1 - 12 * u - hgt : y0 + 12 * u;
+    SDL_FColor red = ui_rgba(214, 74, 52, 255);
+    ui_panel(x, y, w, hgt, 6 * u, ui_rgba(30, 10, 8, (int)(150 + 60 * pulse)), ui_rgba(214, 74, 52, (int)(110 + 145 * pulse)));
+    ui_text(f, x + pad, y + pad, ui_rgba(255, (int)(70 + 110 * pulse), (int)(50 + 80 * pulse), 255), "ARMOR");
+    float by = y + pad + lh * 0.22f, bh = lh * 0.5f, frac = (float)h->armor / h->armor_max;
+    ui_rect(x + pad + lab, by, barw, bh, ui_rgba(40, 46, 32, 220));
+    ui_rect(x + pad + lab, by, barw * frac, bh, red);
+    ui_rect(x + pad + lab, by, barw, bh, ui_rgba(255, 90, 60, (int)(70 * pulse)));
+}
+
 static void draw_hud(void)
 {
     game_hud h;
-    if (!g_set.status_hud || !game || !game->hud || !game->ws_active || menu_is_open()) return;
+    if (!game || !game->hud || !game->ws_active || menu_is_open()) return;
     if (!hud_ok || !game->hud(&h)) return;
+    float pulse = armor_pulse(&h);
+    if (!g_set.status_hud && pulse < 0) return;
     float x0, y0, x1, y1;
     ui_to_virtual(game_dst.x, game_dst.y, &x0, &y0);
     ui_to_virtual(game_dst.x + game_dst.w, game_dst.y + game_dst.h, &x1, &y1);
@@ -676,6 +727,7 @@ static void draw_hud(void)
     if (u < 0.55f) u = 0.55f;
     ui_font f = u < 1.25f ? UI_SMALL : UI_BODY;   /* text already scales with the window */
     u *= (g_set.hud_scale > 0 ? g_set.hud_scale : 100) / 100.0f;
+    if (!g_set.status_hud) { draw_armor_alert(&h, pulse, x0, y0, x1, y1, u); return; }
     float lh = ui_line_h(f) * 0.92f;
     float lab = ui_text_w(f, "ARMOR") + 10 * u;
     float barw = 72 * u, valw = ui_text_w(f, "0000");
@@ -697,10 +749,15 @@ static void draw_hud(void)
         float frac = max[r] > 0 ? (float)val[r] / (float)max[r] : 0;
         if (frac > 1) frac = 1;
         SDL_FColor c = frac > 0.5f ? green : frac > 0.25f ? amber : red;
-        ui_text(f, cx, cy, label, names[r]);
+        int pulsing = r == 0 && pulse >= 0;          /* low armour: a pulse instead of the blink */
+        ui_text(f, cx, cy, pulsing ? ui_rgba(255, (int)(70 + 110 * pulse), (int)(50 + 80 * pulse), 255) : label, names[r]);
         float by = cy + lh * 0.22f, bh = lh * 0.5f;
         ui_rect(cx + lab, by, barw, bh, track);
-        if (!(frac <= 0.25f && blink)) ui_rect(cx + lab, by, barw * frac, bh, c);
+        if (pulsing) {
+            ui_rect(cx + lab - 3 * u, by - 3 * u, barw + 6 * u, bh + 6 * u, ui_rgba(255, 70, 40, (int)(50 + 150 * pulse)));
+            ui_rect(cx + lab, by, barw, bh, track);
+            ui_rect(cx + lab, by, barw * frac, bh, ui_rgba(214 + (int)(41 * pulse), 74, 52, 255));
+        } else if (!(frac <= 0.25f && blink)) ui_rect(cx + lab, by, barw * frac, bh, c);
         ui_frame(cx + lab, by, barw, bh, 1, ui_rgba(196, 164, 98, 110));
         SDL_snprintf(v, sizeof v, "%d", val[r]);
         ui_text_right(f, x + w - pad, cy, frac <= 0.25f ? red : text, v);
@@ -972,7 +1029,7 @@ static void draw_minimap(void)
         if (sel && blink) c.a = 0.35f;                      /* the pause map blinks the selection */
         mm_marker(ax, ay, sel ? ms * 1.25f : ms, c);
     }
-    for (int i = 0; i < threats.n; i++) {               /* nearby threats: small red diamonds */
+    for (int i = 0; i < threats.n && g_set.minimap_threats; i++) {   /* nearby threats: small red diamonds */
         float tx = MMX(threats.x[i]), ty = MMY(threats.y[i]), s = ms * 0.85f;
         if (tx < mx || ty < my || tx > mx + mw || ty > my + mh) continue;
         ui_triangle(tx - s - 1, ty, tx, ty - s - 1, tx + s + 1, ty, ui_rgba(8, 10, 6, 230));
@@ -1020,6 +1077,7 @@ static struct {
     uint32_t level;                 /* level seen last */
     int level_frames;               /* frames flown on it */
     int level_save;                 /* mission-start autosave pending */
+    int armor_armed;                /* the low-armour voice may play */
     int cnt[32], zero[32];          /* objective markers; frames at zero */
     uint64_t stats_saved;
 } wt;
@@ -1097,6 +1155,11 @@ static void watch_objectives(game_stats *s, int df)
  * drawn on the minimap. Pick-ups, rescues, landing zones and the numbered
  * objectives are not threats. */
 
+static int threat_markers_on(void)
+{
+    return g_set.threat_markers && g_difficulty < 2 && game && game->camera;
+}
+
 static void watch_threats(void)
 {
     static uint32_t level;
@@ -1104,7 +1167,8 @@ static void watch_threats(void)
     static game_minimap units;
     if (g_frame % 6) return;
     threats.n = 0;
-    if (!g_set.minimap || !g_set.minimap_threats || !mmd_ok || !mmd.have_player || !game->minimap_name || !game->minimap_units) return;
+    int want = (g_set.minimap && g_set.minimap_threats) || threat_markers_on();
+    if (!want || !mmd_ok || !mmd.have_player || !game->minimap_name || !game->minimap_units) return;
     if (mmd.level != level) { level = mmd.level; memset(is_enemy, -1, sizeof is_enemy); }
     static const char *const not_enemy[] = { "FUEL", "AMMO", "ARMOR", "ARMOUR", "REPAIR", "LANDING", "ZONE", "MIA", "PILOT", "HOSTAGE",
                                             "PRISONER", "RESCUE", "CAPTIVE", "INSPECT", "SCIENTIST", "AGENT", "CREW", "BASE", "FRIGATE", "SHIP" };
@@ -1114,13 +1178,18 @@ static void watch_threats(void)
             if (game->minimap_name(o, name, sizeof name) != 0) continue;
             is_enemy[o] = !(name[0] >= '0' && name[0] <= '9');               /* "1.RADAR SITES": an objective */
             for (size_t w = 0; w < sizeof not_enemy / sizeof not_enemy[0]; w++) if (SDL_strstr(name, not_enemy[w])) is_enemy[o] = 0;
+            if (SDL_getenv("DS_THREAT_DEBUG")) SDL_Log("threat list %d %s: %s", o, name, is_enemy[o] ? "enemy" : "not");
         }
         if (is_enemy[o] != 1 || !game->minimap_units(o, &units)) continue;
         for (int i = 0; i < units.n && threats.n < THREAT_MAX; i++) {
             long dx = units.m[i].x - mmd.px, dy = units.m[i].y - mmd.py;
             long r = SDL_getenv("DS_THREAT_R") ? SDL_atoi(SDL_getenv("DS_THREAT_R")) : 420;   /* about a screen and a half (env: tests) */
-            if (dx * dx + dy * dy > r * r) continue;
-            threats.x[threats.n] = units.m[i].x; threats.y[threats.n] = units.m[i].y; threats.n++;
+            long ex = units.m[i].lx - mmd.px, ey = units.m[i].ly - mmd.py;   /* a unit on the move: where it is now */
+            if (dx * dx + dy * dy > r * r && (!units.m[i].live || ex * ex + ey * ey > r * r)) continue;
+            threats.x[threats.n] = units.m[i].x; threats.y[threats.n] = units.m[i].y;         /* the minimap's (pause map) place */
+            threats.lx[threats.n] = units.m[i].lx; threats.ly[threats.n] = units.m[i].ly;     /* where it is now (markers) */
+            threats.live[threats.n] = units.m[i].live; threats.n++;
+            if (SDL_getenv("DS_THREAT_DEBUG")) { char nm[64] = ""; game->minimap_name(o, nm, sizeof nm); SDL_Log("threat %s at %d,%d", nm, units.m[i].lx, units.m[i].ly); }
         }
     }
 }
@@ -1202,6 +1271,14 @@ static void watch_frame(void)
         if (h.fuel <= lo && wt.h.fuel > lo && h.fuel > 0 && h.lives == wt.h.lives) amiga_event(EV_LOW_FUEL);
     }
     if (h.lives < wt.h.lives) amiga_event(EV_LIFE_LOST);
+    if (h.armor_max > 0) {                       /* low armour: once per dip below a quarter, re-armed above 40% or by a new life */
+        int lo = h.armor_max / 4;
+        if (h.armor > h.armor_max * 2 / 5 || h.lives != wt.h.lives) wt.armor_armed = 1;
+        if (wt.armor_armed && h.armor <= lo && h.armor > 0 && wt.h.armor > lo && h.lives == wt.h.lives) {
+            wt.armor_armed = 0;
+            if (g_set.armor_warning) amiga_event(EV_LOW_ARMOR);
+        }
+    }
     if (h.load > wt.h.load) s->picked_up += h.load - wt.h.load;
     else if (h.load < wt.h.load && h.lives == wt.h.lives) s->delivered += wt.h.load - h.load;
     wt.h = h;
@@ -1350,6 +1427,62 @@ static void draw_game(int ow, int oh)
     }
 }
 
+/* Threat markers (docs/14-difficulty.md): an arrow at the edge of the
+ * picture toward each enemy gun or missile site (the minimap's threats)
+ * that is off screen but within reach, brighter the closer it is. So the
+ * fire that comes from off screen at full speed has a source you can see. */
+static void draw_threat_markers(void)
+{
+    if (!threat_markers_on() || !game->ws_active || !game->ws_active() || menu_is_open() || !threats.n) return;
+    int camx, camy;
+    if (!game->camera(&camx, &camy)) return;
+    int dbg = SDL_getenv("DS_THREAT_DEBUG") != NULL;     /* test: mark the on-screen ones too */
+    float kx = game_dst.w / fb_w, ky = game_dst.h / VDP_H;
+    float cxp = fb_w * 0.5f, cyp = VDP_H * 0.5f;        /* picture centre, game pixels */
+    float t = (float)(SDL_GetTicks() % 1000000) / 1000.0f;
+    if (dbg && mmd_ok && mmd.have_player) {
+        float vx, vy;
+        ui_to_virtual(game_dst.x + (ropts.ext_left + mmd.px - camx) * kx, game_dst.y + (mmd.py - camy) * ky, &vx, &vy);
+        ui_frame(vx - 8, vy - 8, 16, 16, 2, ui_rgba(60, 120, 255, 255));
+        static int warped;
+        if (SDL_getenv("DS_THREAT_WARP") && !warped && threats.n && threats.live[0]) {   /* test only (Desert) */
+            warped = 1;
+            uint32_t pl = (uint32_t)R32(0xFF251C) & 0xFFFFFF, pos = (uint32_t)R32(pl + 0x28) & 0xFFFFFF;
+            gen_write16(pos, (uint16_t)(threats.lx[0] + 90)); gen_write16(pos + 4, (uint16_t)(threats.ly[0] + 30));
+        }
+        SDL_Log("threat dbg: frame %llu player %d,%d cam %d,%d ext %d fb_w %d threats %d", (unsigned long long)g_frame, mmd.px, mmd.py, camx, camy, ropts.ext_left, fb_w, threats.n);
+    }
+    for (int i = 0; i < threats.n; i++) {
+        if (!threats.live[i]) continue;                  /* not in play: it can't shoot */
+        float sx = (float)(ropts.ext_left + threats.lx[i] - camx), sy = (float)(threats.ly[i] - camy);
+        if (dbg) SDL_Log("threat live %d at screen %.0f,%.0f frame %llu", i, sx, sy, (unsigned long long)g_frame);
+        int on = sx >= -8 && sx < fb_w + 8 && sy >= -8 && sy < VDP_H + 8;
+        float vx, vy, s;
+        if (on) {
+            if (!dbg) continue;
+            ui_to_virtual(game_dst.x + sx * kx, game_dst.y + sy * ky, &vx, &vy);
+            ui_frame(vx - 8, vy - 8, 16, 16, 2, ui_rgba(255, 60, 40, 255));
+            continue;
+        }
+        /* where the line from the centre leaves the picture, inset by a margin */
+        float dx = sx - cxp, dy = sy - cyp, mx = cxp - 10, my = cyp - 10;
+        float k = SDL_fabsf(dx) * my > SDL_fabsf(dy) * mx ? mx / SDL_fabsf(dx) : my / SDL_fabsf(dy);
+        float ex = cxp + dx * k, ey = cyp + dy * k;
+        ui_to_virtual(game_dst.x + ex * kx, game_dst.y + ey * ky, &vx, &vy);
+        float len = SDL_sqrtf(dx * dx + dy * dy), off = len - SDL_sqrtf((ex - cxp) * (ex - cxp) + (ey - cyp) * (ey - cyp));
+        float near = 1.0f - SDL_min(1.0f, off / 260.0f);         /* 1 just off the edge, 0 far */
+        float a = 0.45f + 0.55f * near * (0.75f + 0.25f * SDL_sinf(t * 6.0f + i));
+        float ux = dx / len, uy = dy / len;
+        s = (ui_line_h(UI_SMALL) * 0.55f) * (0.8f + 0.4f * near) * (game_dst.h / 720.0f > 0.6f ? game_dst.h / 720.0f : 0.6f);
+        SDL_FColor c = ui_rgba(232, 58, 40, (int)(255 * a)), edge = ui_rgba(20, 6, 4, (int)(200 * a));
+        /* a dark outline under a red arrowhead pointing outward */
+        float tx = vx + ux * s, ty = vy + uy * s, lx = vx - ux * s * 0.6f - uy * s * 0.75f, ly = vy - uy * s * 0.6f + ux * s * 0.75f;
+        float rx = vx - ux * s * 0.6f + uy * s * 0.75f, ry = vy - uy * s * 0.6f - ux * s * 0.75f;
+        ui_triangle(tx + ux * 2, ty + uy * 2, lx - ux * 1.5f - uy * 1.5f, ly - uy * 1.5f + ux * 1.5f, rx - ux * 1.5f + uy * 1.5f, ry - uy * 1.5f - ux * 1.5f, edge);
+        ui_triangle(tx, ty, lx, ly, rx, ry, c);
+    }
+}
+
 static void draw_sound_lab(void);
 static void present(void)
 {
@@ -1363,6 +1496,7 @@ static void present(void)
     scene_step();
     draw_scene_swap();
     ui_begin(ow, oh);
+    draw_threat_markers();
     draw_hud();
     draw_minimap();
     draw_sound_lab();
@@ -1434,6 +1568,9 @@ static const struct { const char *game; int id; const char *sample; int rate; } 
     { "desert", 25, "aB7023AA2CCC5D007", 2013 },
     { "desert", 1001, "aD4ACBDEFDE9A78D0", 7389 },        /* objective (a numbered mission) done: fx 26 "Mission complete" */
     { "desert", 1003, "a088F2E181897E676", 7389 },        /* low fuel: fx 25 "Warning" */
+    { "desert", 1007, "a088F2E181897E676", 7389 },        /* low armour: fx 25 "Warning" (from the Amiga disks, in all three games) */
+    { "jungle", 1007, "a088F2E181897E676", 7389 },
+    { "urban", 1007, "a088F2E181897E676", 7389 },
     { "desert", 1005, "a3A2622894A743146", 8867 },        /* rescue call, far: fx 7 "Help!" */
     { "desert", 1006, "aE438223EA486634C", 8475 },        /* rescue call, near: fx 6 "Over here!" */
     { "desert", SFX_ROTOR, "aCF1D882ECEBF7CCE", 7389 },   /* rotor: fx 2, looped while the Genesis rotor (FM channel 5) plays */
@@ -1453,6 +1590,7 @@ static const char *sfx_name(int id)
     case EV_LIFE_LOST: return "life lost +";
     case EV_RESCUE_FAR: return "rescue call far +";
     case EV_RESCUE_NEAR: return "rescue call near +";
+    case EV_LOW_ARMOR: return "low armour +";
     case SFX_ROTOR: return "rotor loop";
     default: break;
     }
@@ -1538,20 +1676,19 @@ static const struct { float bullet, missile, cap; } difficulty_tab[2] = {
     { 0.35f, 0.60f, 0.15f },                         /* Recruit */
     { 0.55f, 0.80f, 0.25f },                         /* Remastered */
 };
-static struct { uint64_t frame[64]; int dmg[64]; int n, pos; } dmg_win;
-
 static int host_damage_hook(uint32_t target, uint32_t weapon, int dmg)
 {
-    if (!game || SDL_strcmp(game->id, "desert") || g_set.difficulty >= 2 || dmg <= 0 || extracting || sandbox) return dmg;
-    uint32_t player = (uint32_t)R32(0xFF251C) & 0xFFFFFF;
-    if ((target & 0xFFFFFF) != player) return dmg;
-    int bullet = weapon >= 0x095F86 && weapon < 0x095F86 + 18 * 0x1E && (weapon - 0x095F86) % 0x1E == 0 &&
-                 (g_rom[weapon + 2] << 8 | g_rom[weapon + 3]) == 0x25DA;        /* the bullet projectile */
-    const float *t = bullet ? &difficulty_tab[g_set.difficulty].bullet : &difficulty_tab[g_set.difficulty].missile;
+    if (!game || !game->hit_class || !game->hud || g_difficulty >= 2 || dmg <= 0 || extracting || sandbox || att_on) return dmg;
+    int kind = game->hit_class(target, weapon);
+    if (kind < 0) return dmg;                        /* not the player */
+    game_hud h;
+    if (!game->hud(&h)) return dmg;
+    if (dmg >= h.armor_max) return dmg;              /* instant kills stay (Jungle/Urban's $7FFF) */
+    const float *t = kind == 0 ? &difficulty_tab[g_difficulty].bullet : &difficulty_tab[g_difficulty].missile;
     int d = (int)(dmg * *t + 0.5f);
     if (d < 1) d = 1;
     /* armour lost in the last second (60 frames) */
-    int maxa = R16(0xFF1040), cap = (int)(maxa * difficulty_tab[g_set.difficulty].cap), recent = 0;
+    int cap = (int)(h.armor_max * difficulty_tab[g_difficulty].cap), recent = 0;
     for (int i = 0; i < dmg_win.n; i++)
         if (g_frame >= dmg_win.frame[i] && g_frame - dmg_win.frame[i] < 60) recent += dmg_win.dmg[i];
     if (cap > 0 && recent + d > cap) d = SDL_max(0, cap - recent);
@@ -1559,7 +1696,7 @@ static int host_damage_hook(uint32_t target, uint32_t weapon, int dmg)
         int k = dmg_win.pos; dmg_win.pos = (dmg_win.pos + 1) % 64; if (dmg_win.n < 64) dmg_win.n++;
         dmg_win.frame[k] = g_frame; dmg_win.dmg[k] = d;
     }
-    if (SDL_getenv("DS_DMG_LOG")) SDL_Log("hit %d -> %d (%s, last second %d of %d) frame %llu", dmg, d, bullet ? "bullet" : "missile", recent, cap, (unsigned long long)g_frame);
+    if (SDL_getenv("DS_DMG_LOG")) SDL_Log("hit %d -> %d (%s, last second %d of %d) frame %llu", dmg, d, kind == 0 ? "bullet" : "missile", recent, cap, (unsigned long long)g_frame);
     return d;
 }
 
@@ -2772,7 +2909,7 @@ static int newest_state(SDL_Time *when)
  * Returns 0 to go back. Original also brings back the console's slowdown. */
 static int pick_difficulty(void)
 {
-    if (use_script || (max_ticks && !SDL_getenv("DS_PROMPT")) || SDL_strcmp(game->id, "desert")) return 1;
+    if (use_script || (max_ticks && !SDL_getenv("DS_PROMPT"))) return 1;
     static const char *name[3] = { "Recruit", "Remastered", "Original" };
     static const char *line1[3] = {
         "New to the Strike games? Enemy fire is much gentler,",
@@ -2839,7 +2976,7 @@ static int pick_difficulty(void)
         ui_begin(ow, oh);
         SDL_FColor gold = ui_rgba(196, 164, 98, 255), text = ui_rgba(232, 226, 210, 255), dim = ui_rgba(150, 148, 132, 255);
         ui_text_center(UI_TITLE, 640, 60, gold, game->title);
-        ui_text_center(UI_BODY, 640, 130, dim, "Choose your difficulty. You can change it any time in Settings > System.");
+        ui_text_center(UI_BODY, 640, 130, dim, "Choose your difficulty. It's kept with your saves; change it any time in Settings > System.");
         for (int i = 0; i < 3; i++) {
             int d = order[i], on = i == sel;
             float y = by + i * (bh + 16);
@@ -2856,7 +2993,8 @@ static int pick_difficulty(void)
     }
     input_clear_pressed();
     if (result < 0) return 0;
-    g_set.difficulty = order[result];
+    g_set.difficulty = order[result];               /* the next New Game starts here too */
+    set_difficulty(g_set.difficulty);
     g_set.authentic_speed = g_set.difficulty == 2;
     apply_settings();
     settings_save(settings_path);
@@ -3497,6 +3635,7 @@ int main(int argc, char **argv)
     SDL_snprintf(settings_path, sizeof settings_path, "%ssettings.ini", pref);
     SDL_snprintf(controls_path, sizeof controls_path, "%scontrols.ini", pref);
     if (!settings_load(settings_path)) settings_save(settings_path);
+    set_difficulty(g_set.difficulty);
     if (g_set.minimap_size <= 2) { static const int was[3] = { 24, 32, 42 }; g_set.minimap_size = was[g_set.minimap_size]; }   /* old Small/Medium/Large */
     if (!input_load(controls_path)) input_save(controls_path);
     SDL_snprintf(stats_path, sizeof stats_path, "%sstats.ini", pref);
@@ -3635,6 +3774,7 @@ int main(int argc, char **argv)
             (g_set.amiga_sfx || g_set.amiga_music || g_set.amiga_intro || g_set.amiga_extras))
             say("Amiga sounds, music and intro need your Amiga disks: Settings > Audio > Add Amiga Disks");
         int how = 0, slot = -1;
+        set_difficulty(g_set.difficulty);           /* a new game's; a loaded save brings its own */
         if (from_selector || SDL_getenv("DS_PROMPT")) how = continue_prompt(&slot);   /* DS_PROMPT: tests */
         if (how < 0) { game = 0; continue; }             /* back to the game picker */
         if (how == 1 && !load_slot(slot)) how = 0;

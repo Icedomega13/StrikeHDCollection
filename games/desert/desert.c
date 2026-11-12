@@ -20,6 +20,16 @@ static const strike_hud_cfg hcfg = { 0xFF251C, 0x32, 0xFF1040, 0xFF10AA, 0xFF10B
 static int hud(game_hud *h) { return strike_hud(&hcfg, h); }
 static int tour(int reset, int play) { return strike_tour(&hcfg, reset, play); }
 static void cheats(int g, int f, int a, int l) { strike_cheats(&hcfg, g, f, a, l); }
+/* Difficulty: every hit, crashes included, comes through the hook ($00A6F6);
+ * a bullet is a weapon-table entry ($095F86, 18 entries of 30 bytes) whose
+ * projectile is the bullet object $FF25DA. */
+static int hit_class(uint32_t t, uint32_t w)
+{
+    int k = strike_hit_class(&hcfg, 0x25DA, t, w);
+    if (k == 0 && (w < 0x095F86 || w >= 0x095F86 + 18 * 0x1E || (w - 0x095F86) % 0x1E)) k = 1;
+    return k;
+}
+static int camera(int *x, int *y) { return strike_camera(&hcfg, x, y); }
 
 /* Minimap (docs/11-minimap.md): the pause map's list and icon builder ($003EBC, $003F6C,
  * $003D1A), its world-to-map transform ($003CCC: world/32 + (80, 40)). */
@@ -54,4 +64,6 @@ const game_module game_desert = {
     .minimap_name = minimap_name,
     .minimap_units = minimap_units,
     .mm_view = &mview,
+    .hit_class = hit_class,
+    .camera = camera,
 };

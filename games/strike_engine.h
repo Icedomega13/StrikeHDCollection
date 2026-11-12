@@ -87,6 +87,26 @@ static inline int strike_hud(const strike_hud_cfg *c, game_hud *h)
     return 1;
 }
 
+/* Difficulty: -1 the hit isn't on the player, 0 a bullet (the weapon
+ * entry's projectile, its first long, is the game's bullet object), 1
+ * anything else. */
+static inline int strike_hit_class(const strike_hud_cfg *c, uint16_t bullet, uint32_t target, uint32_t weapon)
+{
+    uint32_t p = (uint32_t)(strike_r16(c->player_ptr) << 16 | strike_r16(c->player_ptr + 2)) & 0xFFFFFF;
+    if (p < 0xFF0000 || (target & 0xFFFFFF) != p) return -1;
+    weapon &= 0xFFFFFF;
+    if (weapon + 4 > g_rom_size) return 1;
+    return (g_rom[weapon] << 24 | g_rom[weapon + 1] << 16 | g_rom[weapon + 2] << 8 | g_rom[weapon + 3]) == (0xFF0000u | bullet) ? 0 : 1;
+}
+
+/* The ground layer's camera: x at +$4A, y at +$48 (docs/07-widescreen.md). */
+static inline int strike_camera(const strike_hud_cfg *c, int *x, int *y)
+{
+    *x = (int16_t)strike_r16(c->ground_rec + 0x4A);
+    *y = (int16_t)strike_r16(c->ground_rec + 0x48);
+    return 1;
+}
+
 static inline void strike_w16(uint32_t a, int v) { a &= 0xFFFF; g_ram[a] = (uint8_t)(v >> 8); g_ram[(a + 1) & 0xFFFF] = (uint8_t)v; }
 
 /*

@@ -81,6 +81,10 @@
     "038C90": {
       "imm": "(uint32_t)g_start_campaign",
       "why": "new game starts at campaign g_start_campaign (0 = original)"
+    },
+    "0429B8": {
+      "post": "if (g_damage_hook) R.d[0] = (R.d[0] & 0xFFFF0000u) | (uint16_t)g_damage_hook(R.a[5], R.a[4], (int16_t)R.d[0]);",
+      "note": "damage from a weapon hit: a5 = the target, d0 = the damage that $04192E takes off its armour ($2C(a5) at $041940), a4 = the weapon entry (its damage at +8); the host scales it for the difficulty. Crashes and other damage reach $04192E from other callers and are left alone"
     }
   }
 }

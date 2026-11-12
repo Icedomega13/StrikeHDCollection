@@ -15,6 +15,10 @@ static const strike_hud_cfg hcfg = { 0xFF29E8, 0x2C, 0xFF1054, 0xFF10C6, 0xFF10D
 static int hud(game_hud *h) { return strike_hud(&hcfg, h); }
 static int tour(int reset, int play) { return strike_tour(&hcfg, reset, play); }
 static void cheats(int g, int f, int a, int l) { strike_cheats(&hcfg, g, f, a, l); }
+/* Difficulty: weapon hits only (the hook is on the projectile-hit path);
+ * a bullet is a weapon entry whose projectile is the bullet object $FF2F44. */
+static int hit_class(uint32_t t, uint32_t w) { return strike_hit_class(&hcfg, 0x2F44, t, w); }
+static int camera(int *x, int *y) { return strike_camera(&hcfg, x, y); }
 
 /* Minimap: the pause map's list and icon builder ($039906, $0399B6,
  * $039784), its world-to-map transform ($039726: world/32 + (56, 48)). */
@@ -49,4 +53,6 @@ const game_module game_jungle = {
     .minimap_name = minimap_name,
     .minimap_units = minimap_units,
     .mm_view = &mview,
+    .hit_class = hit_class,
+    .camera = camera,
 };
