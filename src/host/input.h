@@ -45,6 +45,7 @@ void input_event(const SDL_Event *e);       /* hot-plug + edge-triggered actions
 /* Current state of the 8 Genesis buttons as GB_* bits. */
 unsigned input_pad_state(void);
 int  input_held(action a);
+void input_test_key(int scancode, int down);   /* tests: hold a key (--key T:+Name) */
 /* Returns 1 once per press of a host action (save state, fullscreen, ...). */
 int  input_pressed(action a);
 void input_modern(bindings *b);    /* the Modern gamepad layout (keyboard kept) */

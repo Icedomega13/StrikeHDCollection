@@ -210,7 +210,7 @@ static void on_vblank(void)
     /* Sprite X as the game's full signed position at every widescreen width
      * (issue #11): read as 9 bits, a big sprite just off the left edge wraps
      * to x + 512 and shows as a sliver in the right-hand extension. */
-    ropts.wide_sprites = active;
+    ropts.wide_sprites = active && !SDL_getenv("DS_9BIT_SPRITES");   /* test: the old 9-bit read, to compare */
     ws_planes_ok = active && game->ws_world;
     if (active && game->ws_world && ropts.ext_left > 56) {
         ropts.world[0] = &wp[0];
@@ -262,6 +262,8 @@ static void on_frame(void)
     if (!att_on && !extracting && game && game->cheats && hud_ok &&
         (g_cheat.god || g_cheat.fuel || g_cheat.ammo || g_cheat.lives))
         game->cheats(g_cheat.god, g_cheat.fuel, g_cheat.ammo, g_cheat.lives);
+    if (!att_on && !extracting && game && game->tour && hud_ok && SDL_getenv("DS_SWEEP"))   /* test: fly the whole map, rows, kept alive */
+        game->tour(0, 1);
     cpu_frame_yield();
 }
 
@@ -1089,6 +1091,7 @@ static void rumble(float lo, float hi, int ms)
     /* Issue #5: short weak pulses barely spin up a pad's motors, so the
      * strengths follow a square-root curve and pulses last at least 70 ms. */
     float k = g_set.rumble / 100.0f;
+    if (SDL_getenv("DS_RUMBLE_LOG")) SDL_Log("rumble %.2f %.2f %d ms frame %llu", SDL_sqrtf(lo) * k, SDL_sqrtf(hi) * k, ms < 70 ? 70 : ms, (unsigned long long)g_frame);
     input_rumble(SDL_sqrtf(lo) * k, SDL_sqrtf(hi) * k, ms < 70 ? 70 : ms);
 }
 
@@ -2005,8 +2008,10 @@ static void scene_step(void)
     uint64_t now = SDL_GetTicks();
     if (sc.a->nframes > 1 && !sc.still && (uint32_t)now - sc.wait >= 83) {    /* about 12 frames a second */
         sc.wait = (uint32_t)now;
+        int was = sc.frame;
         if (sc.frame + 1 < sc.a->nframes) sc.frame++;
         else if (sc.sw->loop == 1) sc.frame = 1;
+        if (sc.frame != was && SDL_getenv("DS_SCENE_LOG")) SDL_Log("scene %06X anim %s frame %d of %d", (unsigned)g_scene_rec, sc.a->id, sc.frame, sc.a->nframes);
     }
     int dirty = sc.frame != sc.shown;
     /* the program's overlays, ticking at 50 Hz */
@@ -2097,6 +2102,20 @@ static void draw_scene_swap(void)
 
 static void scene_frame(void)
 {
+    if (SDL_getenv("DS_GHOST_LOG") && hud_ok && ropts.ext_left) {   /* issue #11: sprites a 9-bit X would wrap into view */
+        uint32_t sat = (g_vreg[5] & 0x7E) << 9;
+        int ext = ropts.ext_left;
+        for (int k = 0, link = 0; k < 80; k++) {
+            uint32_t e = (sat + link * 8) & 0xFFFF;
+            uint16_t s = (uint16_t)(g_vram[(e + 2) & 0xFFFF] << 8 | g_vram[(e + 3) & 0xFFFF]);
+            uint16_t x = (uint16_t)(g_vram[(e + 6) & 0xFFFF] << 8 | g_vram[(e + 7) & 0xFFFF]);
+            int w = (((s >> 10) & 3) + 1) * 8, h = (((s >> 8) & 3) + 1) * 8, x9 = (x & 0x1FF) - 128, x16 = (int16_t)x - 128;
+            int y = (g_vram[e & 0xFFFF] << 8 | g_vram[(e + 1) & 0xFFFF]) & 0x3FF;
+            if (x16 + w <= -ext && x9 < 320 + ext && x9 + w > 320 && y + h > 128 && y < 128 + 224) SDL_Log("ghost avoided: sprite %d x %04X (9-bit at %d, really %d) frame %llu", link, x, x9, x16, (unsigned long long)g_frame);
+            link = s & 0x7F;
+            if (!link) break;
+        }
+    }
     if (SDL_getenv("DS_SPR_LOG") && hud_ok) {   /* sprite X words whose high bits are not a sign extension */
         uint32_t sat = (g_vreg[5] & 0x7E) << 9;
         for (int k = 0; k < 80; k++) {
@@ -2895,14 +2914,15 @@ static void inject_test_input(void)
 {
     if (!max_ticks) return;
     for (int i = 0; i < nkeys; i++) if (keys[i].t == tick) {
+        /* "+Name" holds the key down, "-Name" lets it go, "Name" taps it */
+        const char *nm = keys[i].s;
+        int hold = nm[0] == '+' ? 1 : nm[0] == '-' ? -1 : 0;
         SDL_Event k = { 0 };
-        k.type = SDL_EVENT_KEY_DOWN;
-        k.key.scancode = SDL_GetScancodeFromName(keys[i].s);
+        k.key.scancode = SDL_GetScancodeFromName(hold ? nm + 1 : nm);
         k.key.key = SDL_GetKeyFromScancode(k.key.scancode, 0, false);
-        k.key.down = true;
-        SDL_PushEvent(&k);
-        k.type = SDL_EVENT_KEY_UP; k.key.down = false;
-        SDL_PushEvent(&k);
+        if (hold) input_test_key(k.key.scancode, hold > 0);
+        if (hold >= 0) { k.type = SDL_EVENT_KEY_DOWN; k.key.down = true; SDL_PushEvent(&k); }
+        if (hold <= 0) { k.type = SDL_EVENT_KEY_UP; k.key.down = false; SDL_PushEvent(&k); }
     }
 }
 

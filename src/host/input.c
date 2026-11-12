@@ -250,12 +250,17 @@ static int pad_input_down(SDL_Gamepad *p, int code)
     return pos ? v > dz : v < -dz;
 }
 
+/* Keys held by the tests (--key T:+Name / -Name): pushed events don't
+ * reach SDL's keyboard state. */
+static bool test_keys[SDL_SCANCODE_COUNT];
+void input_test_key(int scancode, int down) { if (scancode > 0 && scancode < SDL_SCANCODE_COUNT) test_keys[scancode] = down != 0; }
+
 int input_held(action a)
 {
     const bool *ks = SDL_GetKeyboardState(0);
     for (int i = 0; i < MAX_BINDS; i++) {
         SDL_Scancode k = g_bind.key[a][i];
-        if (k != SDL_SCANCODE_UNKNOWN && ks[k]) return 1;
+        if (k != SDL_SCANCODE_UNKNOWN && (ks[k] || test_keys[k])) return 1;
     }
     for (int p = 0; p < MAX_PADS; p++) {
         if (!pads[p]) continue;
