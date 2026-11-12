@@ -31,6 +31,7 @@ typedef struct {
     int  (*campaign_count)(void);                       /* campaigns of the running game */
     void (*restart_campaign)(void);                     /* restart at g_cheat.campaign */
     int  (*stats_lines)(char (*lines)[96], int max);    /* "label\tvalue" lines for the Stats page */
+    void (*amiga_movies)(void);                         /* the Amiga movie sequences (Settings > Audio) */
     void (*add_amiga_disks)(void);                      /* file picker for Amiga .adf images */                         /* starter pack from the dump */
 } menu_host;
 

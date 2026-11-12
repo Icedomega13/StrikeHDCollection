@@ -152,6 +152,7 @@ unsigned int m68k_read_memory_8(unsigned int a)
     if (a < CHIP_SIZE) return chip[a];
     if ((a & 0xFFF000) == 0xDFF000) { uint16_t v = custom_read(a & 0xFFE); return (a & 1) ? (v & 0xFF) : (v >> 8); }
     if (a == 0xBFE001) return 0xFF;                        /* mouse / joystick fire buttons up */
+    if (a == 0xBFDE00 || a == 0xBFDF00 || a == 0xBFEE01 || a == 0xBFEF01) return 0;   /* CIA timer control: one-shot timers have run out (START clear) */
     if ((a & 0xFF0000) == 0xBF0000) return 0xFF;
     return 0;
 }
@@ -246,6 +247,9 @@ static int load(const uint8_t *d, size_t n, uint32_t *entry)
     return cur >= 0;
 }
 
+static uint32_t start_d[8];
+void avm_set_args(const uint32_t d[8]) { memcpy(start_d, d, sizeof start_d); }
+
 int avm_start(const uint8_t *hunks, size_t n)
 {
     avm_stop();
@@ -255,6 +259,23 @@ int avm_start(const uint8_t *hunks, size_t n)
     intena = intreq = dmacon = 0;
     uint32_t entry;
     if (!load(hunks, n, &entry)) return 0;
+    /* The game's trackloader (file d0 = disk << 8 | index, d1 bytes to a1):
+     * the briefing program loads its song's instruments with it and waits
+     * for disk 2 otherwise. Sound writes are ignored here (the host plays
+     * the module), so the load returns at once with nothing read. Found by
+     * its first instructions: move.w #1,abs.l; move.w #0,abs.l; btst #15,d0. */
+    for (uint32_t a = 0x10000; a + 24 < CHIP_SIZE - 0x10000; a += 2) {
+        if (rd32(a) == 0x33FC0001u && rd32(a + 8) == 0x33FC0000u && rd32(a + 16) == 0x0800000Fu) {
+            cwr16(a, 0x7000);                                /* moveq #0,d0 */
+            cwr16(a + 2, 0x4E75);                            /* rts */
+        }
+        /* And the song loader that uses it (a0 the module: reads the
+         * instrument directory from disk 1, then each instrument by name;
+         * with nothing read it would never find them): move.l a0/a2/a3 to
+         * abs.l, movem.l d0-d7/a0-a6,-(a7). The song is the host's. */
+        if ((rd32(a) >> 16) == 0x23C8 && (rd32(a + 6) >> 16) == 0x23CA && (rd32(a + 12) >> 16) == 0x23CB && rd32(a + 18) == 0x48E7FFFEu)
+            cwr16(a, 0x4E75);                                /* rts */
+    }
     for (uint32_t v = 2; v < 64; v++) { uint32_t a = v * 4; chip[a] = 0; chip[a + 1] = 0; chip[a + 2] = (uint8_t)(RTE_PC >> 8); chip[a + 3] = (uint8_t)RTE_PC; }
     cwr16(RTE_PC, 0x4E73);                                 /* rte */
     cwr16(STOP_PC, 0x4E72); cwr16(STOP_PC + 2, 0x2700);    /* stop #$2700 */
@@ -269,6 +290,8 @@ int avm_start(const uint8_t *hunks, size_t n)
     m68k_set_reg(M68K_REG_PC, entry);
     m68k_set_reg(M68K_REG_SR, 0x2700);
     memset(chip, 0, 8);                                    /* programs read 0.l as zero (e.g. a blit modulo) */
+    for (int r = 0; r < 8; r++) m68k_set_reg((m68k_register_t)(M68K_REG_D0 + r), start_d[r]);   /* the game's arguments (avm_set_args) */
+    memset(start_d, 0, sizeof start_d);
     m68k_set_reg(M68K_REG_A4, 0x500);                      /* the loader's flag bytes */
     m68k_set_reg(M68K_REG_A5, 0x504);
     m68k_set_reg(M68K_REG_A6, 0x508);

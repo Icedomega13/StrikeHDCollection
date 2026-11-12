@@ -52,6 +52,7 @@ static const menu_host *H;
 static void open_folder(void) { if (H->open_settings_folder) H->open_settings_folder(); }
 static void make_pack(void) { if (H->make_hd_pack) H->make_hd_pack(); }
 static void add_amiga(void) { if (H->add_amiga_disks) H->add_amiga_disks(); }
+static void amiga_movies(void) { if (H->amiga_movies) H->amiga_movies(); }
 
 static item tab_display[] = {
     { IT_CHOICE, "Window Mode", "Borderless fullscreen switches instantly; exclusive uses the resolution below.", &g_set.window_mode, WINMODE, 3 },
@@ -91,7 +92,8 @@ static item tab_audio[] = {
     { IT_SLIDER, "Custom Music Volume", "Level of your own music files.", &g_set.custom_music_vol, 0, 0, 0, 150, 5, "%" },
     { IT_CHOICE, "Intro", "Amiga opens Desert Strike with the Amiga title photographs and music, before the Genesis title. The game picker is unchanged.", &g_set.amiga_intro, SFXSET, 2 },
     { IT_CHOICE, "Cutscenes", "Amiga shows the Amiga version of the briefing and story pictures, animated where the Amiga animates them; the Genesis text and timing stay.", &g_set.amiga_cutscenes, SFXSET, 2 },
-    { IT_CHOICE, "Amiga Extras", "Amiga sounds where the Genesis is silent: the objective-complete jingle, and (assigned in the Sound Lab) voice lines for mission start, low fuel, low armour and a lost life.", &g_set.amiga_extras, OFF_ON, 2 },
+    { IT_CHOICE, "Amiga Extras", "Amiga sounds where the Genesis is silent: the objective-complete jingle and \"Mission complete\", the computer voice's \"Warning\" for low fuel and low armour, a scream for a lost life, and the rescue calls. The Sound Lab can change any of them.", &g_set.amiga_extras, OFF_ON, 2 },
+    { IT_BUTTON, "Amiga Movies", "Watch the Amiga game's movie sequences from your disks: the sunset pick-ups, the embassy, the madman's bomber and the scenes the cutscenes use.", 0, 0, 0, 0, 0, 0, 0, amiga_movies },
     { IT_BUTTON, "Add Amiga Disks", "Pick your Desert Strike Amiga disk images (.adf). They are copied to the amiga folder in the settings folder.", 0, 0, 0, 0, 0, 0, 0, add_amiga },
     { IT_CHOICE, "Sound Lab", "[ ] picks the Amiga sample for the last effect, - = its pitch, 0 back to Genesis, \\ replays it. , . pick the Amiga music for the last song.", &g_sound_lab, OFF_ON, 2 },
 };

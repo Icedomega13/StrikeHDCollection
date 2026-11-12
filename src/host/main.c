@@ -1579,6 +1579,7 @@ static const struct { const char *game; int id; const char *sample; int rate; } 
     { "desert", 25, "aB7023AA2CCC5D007", 2013 },
     { "desert", 1001, "aD4ACBDEFDE9A78D0", 7389 },        /* objective (a numbered mission) done: fx 26 "Mission complete" */
     { "desert", 1003, "a088F2E181897E676", 7389 },        /* low fuel: fx 25 "Warning" */
+    { "desert", 1004, "a9B4AABD5FDDAE701", 6356 },        /* a life lost: fx 11, the scream (the labels' match) */
     { "desert", 1007, "a088F2E181897E676", 7389 },        /* low armour: fx 25 "Warning" (from the Amiga disks, in all three games) */
     { "jungle", 1007, "a088F2E181897E676", 7389 },
     { "urban", 1007, "a088F2E181897E676", 7389 },
@@ -1590,6 +1591,23 @@ static int nsfxmap;
 static char amiga_dir[1100], sfxmap_path[1100], music_dir[1100];
 static int lab_last = -1, lab_hist[6], lab_nhist;
 static uint64_t lab_flash;
+
+/* The Amiga effect bank's sounds (fx 1-26) by what they are: the labels from
+ * the identification pass (speech recognition and sound classifiers, with
+ * the user's review), shown in the Sound Lab. */
+static const char *const fx_names[27] = { "",
+    "gun pop", "rotor", "explosion", "launch", "beep", "voice \"Over here!\"", "voice \"Help!\"",
+    "buzz", "buzzer", "cry", "scream", "low thud", "knock", "gun pop 2", "buzzer 2", "big explosion",
+    "crack", "bang", "short explosion", "sharp bang", "pop", "low pop", "twang", "slam",
+    "voice \"Warning\"", "voice \"Mission complete\"" };
+static const char *sample_title(const amiga_sample *a)
+{
+    static char t[48];
+    int n = 0;
+    if (!a->label[0]) return "Amiga";
+    if (SDL_sscanf(a->label, "fx %d", &n) == 1 && n >= 1 && n <= 26) { SDL_snprintf(t, sizeof t, "fx %d %s", n, fx_names[n]); return t; }
+    return a->label;
+}
 
 /* Desert's effect ids, as identified from play logs (sfx_logger in ds_test). */
 static const char *sfx_name(int id)
@@ -1862,7 +1880,8 @@ static uint32_t rom_l(uint32_t a)
 typedef struct { uint32_t pic; const char *amiga; int gx, gy, gw, gh; int ax, ay, aw, ah; int loop; const char *ground;
                  int vm, vdy, vsy, vsh; } scene_swap;
 /* vm: run the cutscene program that holds this picture (amiga_vm.c) and show
- * its screen, rows vsy.. (vsh rows, 0: all) at Genesis row vdy, centred. */
+ * its screen, rows vsy.. (vsh rows, 0: all) at Genesis row vdy, centred;
+ * vm 2: its screen's a* rectangle in the g* rectangle. */
 static const scene_swap scene_swaps[] = {
     /* the story (attract and new game); Amiga pictures are 352 wide, so
      * they spill 16 px into the side bars, as on an Amiga screen */
@@ -1876,8 +1895,11 @@ static const scene_swap scene_swaps[] = {
      * 816 px ground strip past at two speeds; 88 + 24 rows = the picture */
     { 0x0EE488, "cB757CAFFE3F99720", -16, 48, 352, 88, 0, 0, 352, 88, 2, "cD58D5552E5214F2A", 1, 48, 0, 112 },
     /* the campaign briefing: the briefing room (board and officer) in the
-     * Genesis's portrait panel left of the text */
-    { 0x0AF484, "c8AD6F5C975A58B8A", 2, 24, 156, 176, 70, 5, 160, 150, 0 },
+     * Genesis's portrait panel left of the text. vm 2: its program runs (the
+     * board, the officer, the pilots, the smoke), cropped like the picture
+     * (16 px further right on the program's 352 px screen); without it, the
+     * picture and the bobs */
+    { 0x0AF484, "c8AD6F5C975A58B8A", 2, 24, 156, 176, 86, 5, 160, 150, 0, NULL, 2 },
     /* outcomes */
     { 0x0ABC3E, "cFB3083BE051B0071", 24, 16, 152, 192, 85, 0, 150, 150, 0 },   /* campaign won: the Apache home on the deck */
     { 0x0ADEDC, "c091FDEF2CF1CF57E", -16, 2, 352, 220, 0, 0, 352, 220, 0, NULL, 1, 0, 0, 224 },    /* game over: the burning wreck in the desert */
@@ -2028,6 +2050,15 @@ static void draw_scene_swap(void)
     const scene_swap *w = sc.sw;
     float kx = game_dst.w / fb_w, ky = game_dst.h / VDP_H;
     float ox = (float)(fb_w - 320) / 2;                    /* the picture is centred in a wider frame buffer */
+    if (sc.vm && w->vm == 2) {
+        int vw, vh;
+        avm_screen(&vw, &vh);
+        if (!sc.vtex || vw < w->ax + w->aw || vh < w->ay + w->ah) return;
+        SDL_FRect vs = { (float)w->ax, (float)w->ay, (float)w->aw, (float)w->ah };
+        SDL_FRect vd = { game_dst.x + (ox + w->gx) * kx, game_dst.y + w->gy * ky, w->gw * kx, w->gh * ky };
+        SDL_RenderTexture(ren, sc.vtex, &vs, &vd);
+        return;
+    }
     if (sc.vm) {
         int vw, vh;
         avm_screen(&vw, &vh);
@@ -2043,7 +2074,7 @@ static void draw_scene_swap(void)
     }
     if (!sc.tex) return;
     SDL_FRect dst = { game_dst.x + (ox + w->gx) * kx, game_dst.y + w->gy * ky, w->gw * kx, w->gh * ky };
-    SDL_FRect src = { (float)w->ax, (float)w->ay, (float)(w->aw ? w->aw : sc.a->w), (float)(w->ah ? w->ah : sc.a->h) };
+    SDL_FRect src = { (float)(w->ax - (w->vm == 2 ? 16 : 0)), (float)w->ay, (float)(w->aw ? w->aw : sc.a->w), (float)(w->ah ? w->ah : sc.a->h) };   /* vm 2's crop is on the 352 px screen */
     if (w->loop != 2) { SDL_RenderTexture(ren, sc.tex, &src, &dst); return; }
     /* scrolling strips: a 352 px window moving over a wrapping strip */
     float t = (SDL_GetTicks() - sc.t0) / 1000.0f;
@@ -2113,6 +2144,11 @@ static const struct { const char *game; int key; const char *module; } music_def
     { "desert", 105, "datitle" }, { "desert", 117, "datitle" },    /* EA logo + title, title */
     { "desert", 9, "story1" }, { "desert", 107, "industry" },     /* story: "The Middle East", the refinery */
     { "desert", 3, "main" },                                       /* story: the madman's bunker */
+    /* checked against the Amiga's own story program (disk block 78: its
+     * scene table plays story1 at "The Middle East", industry at the
+     * refinery, main at "The madman's secret bunker", news at the news report
+     * and keeps it through the "Return to the Gulf" card) */
+    { "desert", 106, "news" }, { "desert", 110, "news" },         /* story: the news report, the title card after it */
     { "desert", 100117, "briefing" }, { "desert", 100104, "briefing" },  /* campaign briefings */
     { "desert", 100004, "briefing" }, { "desert", 100109, "briefing" },
     { "desert", 300003, "death" },                                 /* game over (the bunker song after the last life) */
@@ -2467,7 +2503,7 @@ static void draw_sound_lab(void)
             int si = amiga_sample_find(sfxmap[m].sample);
             const amiga_sample *as = amiga_sample_at(si);
             if (!as) SDL_snprintf(l, sizeof l, "#%-2d %-16s Genesis", id, sfx_name(id));
-            else SDL_snprintf(l, sizeof l, "#%-2d %-16s %2d %-14s %d Hz%s", id, sfx_name(id), si + 1, as->label[0] ? as->label : "Amiga", sfxmap[m].rate, sfxmap[m].def ? " (default)" : "");
+            else SDL_snprintf(l, sizeof l, "#%-2d %-16s %2d %-26s %d Hz%s", id, sfx_name(id), si + 1, sample_title(as), sfxmap[m].rate, sfxmap[m].def ? " (default)" : "");
         } else SDL_snprintf(l, sizeof l, "#%-2d %-16s Genesis", id, sfx_name(id));
         int fresh = i == 0 && SDL_GetTicksNS() < lab_flash;
         ui_text(UI_SMALL, x + 12, cy, i == 0 ? (fresh ? hot : txt) : ui_rgba(170, 166, 150, 255), l);
@@ -3254,6 +3290,135 @@ static void amiga_intro(void)
     input_clear_pressed();
 }
 
+/* ---------------- Amiga movies (docs/13-amiga-ultimate.md) ----------------
+ * The Amiga game's "in game movie sequences" are small programs on its
+ * disks; five have no Genesis scene to stand in for, so they live here,
+ * with the ones the cutscenes already use, under Settings > Audio > Amiga
+ * Movies. Each runs in the Amiga VM, full screen, until it ends (or 30 s for
+ * the ones that loop) or a button skips it. Programs are found by their
+ * first picture (and size, for the two sunset pick-ups that share one). */
+static const struct { const char *owner; size_t size; const char *name, *line; uint32_t d4, d5; } amiga_movies_tab[] = {
+    { "cD0982BEEFABFC84F", 38728, "Sunset pick-up", "The Apache lands at sunset and picks up a man", 0, 0 },
+    { "cD0982BEEFABFC84F", 39512, "Sunset rescue", "Hovering at sunset, a man climbs the ladder", 0, 0 },
+    { "cF28A6B1DDA66F668", 0, "The camp blown up", "A building at the enemy base goes up", 0, 0 },
+    { "cD03CD5DE4E6759C9", 0, "The embassy assault", "The Apache sets down troops at the embassy", 0, 0 },
+    { "c6C2E79E9A102480B", 0, "The embassy hostages", "The hostages run for the bus", 0, 0 },
+    { "c158F052EB147BFCE", 0, "The madman's bomber", "Kilbaba at the controls, and the fire", 0, 0 },
+    { "c0C4D3CD3198FA45E", 0, "A commander's report", "\"This commander gave us the location of our lost agent\"", 0, 0 },
+    { "c8AD6F5C975A58B8A", 0, "The briefing room", "Also in the game: the campaign briefings", 0, 0 },
+    { "c31C4574AE4C38B0A", 0, "The frigate", "Also in the game: the story", 0, 0 },
+    { "cB757CAFFE3F99720", 0, "The refinery", "Also in the game: the story", 0, 0 },
+    { "c091FDEF2CF1CF57E", 0, "Game over", "Also in the game: after the last life", 0, 0 },
+    { "c3522000D86C85073", 0, "The ceremony", "Also in the game: the ending", 0, 0 },
+};
+#define N_MOVIES ((int)(sizeof amiga_movies_tab / sizeof amiga_movies_tab[0]))
+
+static const amiga_program *movie_program(int i)
+{
+    for (int k = 0; k < amiga_program_count(); k++) {
+        const amiga_program *p = amiga_program_at(k);
+        if (!SDL_strcmp(p->owner, amiga_movies_tab[i].owner) && (!amiga_movies_tab[i].size || p->n == amiga_movies_tab[i].size)) return p;
+    }
+    return NULL;
+}
+
+static int movie_input(int *up, int *down, int *ok, int *back)
+{
+    SDL_Event e;
+    *up = *down = *ok = *back = 0;
+    while (SDL_PollEvent(&e)) {
+        input_event(&e);
+        if (e.type == SDL_EVENT_QUIT) { running = 0; *back = 1; }
+        else if (e.type == SDL_EVENT_KEY_DOWN) {
+            switch (e.key.scancode) {
+            case SDL_SCANCODE_UP: case SDL_SCANCODE_W: *up = 1; break;
+            case SDL_SCANCODE_DOWN: case SDL_SCANCODE_S: *down = 1; break;
+            case SDL_SCANCODE_RETURN: case SDL_SCANCODE_KP_ENTER: case SDL_SCANCODE_SPACE: *ok = 1; break;
+            case SDL_SCANCODE_ESCAPE: case SDL_SCANCODE_BACKSPACE: *back = 1; break;
+            default: if (!e.key.repeat) *ok = 2; break;      /* any other key: skips a playing movie */
+            }
+        } else if (e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN) {
+            if (e.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_UP) *up = 1;
+            else if (e.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_DOWN) *down = 1;
+            else if (e.gbutton.button == SDL_GAMEPAD_BUTTON_EAST || e.gbutton.button == SDL_GAMEPAD_BUTTON_BACK) *back = 1;
+            else *ok = 1;
+        } else if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN) *ok = 1;
+    }
+    return *up || *down || *ok || *back;
+}
+
+static void amiga_movies(void)
+{
+    if (!amiga_program_count()) { say("Add your Amiga disks first (Settings > Audio)"); return; }
+    SDL_Texture *vt = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, AVM_W, AVM_H);
+    if (!vt) return;
+    SDL_SetTextureScaleMode(vt, SDL_SCALEMODE_LINEAR);
+    if (aud) SDL_ClearAudioStream(aud);
+    int sel = 0, playing = -1, frames = 0, done = 0;
+    uint32_t tick = 0;
+    while (running && !done) {
+        int up, down, ok, back;
+        inject_test_input();
+        movie_input(&up, &down, &ok, &back);
+        if (playing >= 0) {
+            if (ok || back) { avm_stop(); playing = -1; }
+        } else {
+            if (back) done = 1;
+            if (up) sel = (sel + N_MOVIES - 1) % N_MOVIES;
+            if (down) sel = (sel + 1) % N_MOVIES;
+            if (ok == 1) {
+                const amiga_program *pg = movie_program(sel);
+                uint32_t d[8] = { 0 };
+                d[4] = amiga_movies_tab[sel].d4; d[5] = amiga_movies_tab[sel].d5;
+                avm_set_args(d);
+                if (pg && avm_start(pg->data, pg->n)) { playing = sel; frames = 0; tick = (uint32_t)SDL_GetTicks(); avm_frame(); }
+                else say("That movie isn't on these disks");
+            }
+        }
+        int ow, oh;
+        SDL_GetRenderOutputSize(ren, &ow, &oh);
+        SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
+        SDL_RenderClear(ren);
+        if (playing >= 0) {
+            uint32_t now = (uint32_t)SDL_GetTicks();
+            for (int guard = 0; now - tick >= 20 && guard < 4 && avm_running(); guard++) { tick += 20; avm_frame(); frames++; }
+            if (now - tick > 200) tick = now;
+            if (max_ticks) { avm_frame(); frames++; }
+            int vw = 0, vh = 0;
+            const uint32_t *px = avm_screen(&vw, &vh);
+            if (vw > 0 && vh > 0) {
+                SDL_UpdateTexture(vt, NULL, px, AVM_W * 4);
+                float k = SDL_min((float)ow / vw, (float)oh / (vh * 1.0f));
+                SDL_FRect src = { 0, 0, (float)vw, (float)vh }, dst = { (ow - vw * k) / 2, (oh - vh * k) / 2, vw * k, vh * k };
+                SDL_RenderTexture(ren, vt, &src, &dst);
+            }
+            if (!avm_running() || frames > 50 * 30) { avm_stop(); playing = -1; }
+            ui_begin(ow, oh);
+            ui_text_right(UI_SMALL, 1240, 690, ui_rgba(150, 148, 132, 140), "Any button: back to the list");
+        } else {
+            ui_begin(ow, oh);
+            SDL_FColor gold = ui_rgba(196, 164, 98, 255), text = ui_rgba(232, 226, 210, 255), dim = ui_rgba(150, 148, 132, 255);
+            ui_text_center(UI_TITLE, 640, 40, gold, "Amiga Movies");
+            ui_text_center(UI_BODY, 640, 112, dim, "The Amiga game's movie sequences, from your disks.");
+            for (int i = 0; i < N_MOVIES; i++) {
+                float y = 160 + i * 40;
+                int on = i == sel, have = movie_program(i) != NULL;
+                if (on) ui_panel(300, y - 4, 680, 38, 6, ui_rgba(60, 52, 30, 230), gold);
+                ui_text(UI_BODY, 320, y, have ? (on ? ui_rgba(255, 214, 72, 255) : text) : dim, amiga_movies_tab[i].name);
+                ui_text_right(UI_SMALL, 960, y + 6, dim, amiga_movies_tab[i].line);
+            }
+            ui_text_right(UI_SMALL, 1220, 684, dim, input_pad_connected() ? "A  Play      B  Back" : "Enter  Play      Esc  Back");
+        }
+        after_present();
+        feed_music_only();
+        if (!max_ticks) SDL_Delay(4);
+        else if (++frames > 100000) done = 1;
+    }
+    avm_stop();
+    SDL_DestroyTexture(vt);
+    input_clear_pressed();
+}
+
 static menu_host mh;
 static int switch_requested;
 static void switch_game(void) { switch_requested = 1; }
@@ -3741,6 +3906,11 @@ int main(int argc, char **argv)
             *c1 = *c2 = 0;
             for (int i = 0; i < amiga_program_count(); i++) SDL_Log("program %d %s %zu", i, amiga_program_at(i)->owner, amiga_program_at(i)->n);
             const amiga_program *pg = spec[0] == 'c' ? amiga_program_find(spec) : amiga_program_at(SDL_atoi(spec));
+            if (SDL_getenv("DS_AVM_D")) {                /* DS_AVM_D=d4,d5: the program's arguments */
+                uint32_t d[8] = { 0 };
+                SDL_sscanf(SDL_getenv("DS_AVM_D"), "%u,%u", &d[4], &d[5]);
+                avm_set_args(d);
+            }
             int frames = SDL_atoi(c1 + 1);
             if (pg && avm_start(pg->data, pg->n)) {
                 for (int f = 1; f <= frames && avm_running(); f++) {
@@ -3802,6 +3972,7 @@ int main(int argc, char **argv)
         .campaign_count = menu_campaigns, .restart_campaign = restart_campaign,
         .stats_lines = stats_lines,
         .add_amiga_disks = add_amiga_disks,
+        .amiga_movies = amiga_movies,
     };
     menu_init(&mh);
     input_init();
@@ -3845,6 +4016,7 @@ int main(int argc, char **argv)
         if (how == 2) menu_open_load();
         if (how == 0 && (from_selector || SDL_getenv("DS_PROMPT")) && !pick_difficulty()) { game = 0; continue; }
         if (how == 0) amiga_intro();
+        if (SDL_getenv("DS_MOVIES")) amiga_movies();     /* test: the movie list first */
         run_game();
         if (resume_worthy && game) write_state(RESUME_SLOT);   /* Continue picks up here */
         stats_save(stats_path);

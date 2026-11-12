@@ -16,6 +16,10 @@
 #define AVM_W 384               /* largest screen read back (overscan) */
 #define AVM_H 290
 
+/* Data registers d0-d7 for the next avm_start (the game passes a program
+ * its arguments there: the briefing room's mode in d4 and campaign in d5);
+ * zero otherwise. */
+void avm_set_args(const uint32_t d[8]);
 /* Load an AmigaDOS hunk program and start it. Only one runs at a time. */
 int  avm_start(const uint8_t *hunks, size_t n);
 void avm_stop(void);

@@ -103,4 +103,37 @@ The user had Codex (on their PC) label the 26 effects with AudioSet (AST, CLAP),
 - **Tests:** `DS_ROM_POKE=<addr>:<long>` patches ROM data at frame 3000 (after the game's ROM checksum), e.g. `25EE:8E4` puts the game-over scene into the attract story.
 - **Tests:** `DS_SCENE_LOG=1` logs each scene's record, pictures and song; `DS_SCENE_SHOTS=<dir>` saves a screenshot 100 frames into each.
 
-- **Still to do:** Z80 digital samples (the Genesis has no speech to replace; the Amiga radio chatter samples could be added as extras), the Amiga-only scenes (run in the VM, need a place in the Genesis flow), the computer voice warnings, and Jungle/Urban hook points.
+- **Still to do (after Phase 4):** Z80 digital samples (the Genesis has no speech to replace; the Amiga radio chatter samples could be added as extras); the moments the Amiga plays its movie sequences mid-mission (they are in Amiga Movies until those are found).
+
+## Finished (Phase 4, 2026-11-12)
+
+### The briefing room runs
+- Why it was black: the briefing program (disk 2, block 0, owner `c8AD6F5C975A58B8A`) first spun on the floppy driver's CIA-B timer (`$BFDE00` bit 0, a one-shot that the VM read as `$FF`, always running), then asked for disk 2: its song loader (hunk 0 `$1B54`) reads the instrument directory (disk 1 file `$0D`) and each instrument through the game's trackloader (hunk 3 `$0000`: d0 = disk << 8 | file, d1 bytes to a1; bit 15 = continue a file; the disk's directory, 16-byte entries `{ offset, length, ..., method }`, sits at hunk 4 `$14BAC`).
+- Fixes in `amiga_vm.c`: the CIA timer control registers read 0 (one-shot timers have run out); at `avm_start` the trackloader (found by `move.w #1,abs; move.w #0,abs; btst #15,d0`) is patched to `moveq #0,d0; rts`, and the song loader (found by `move.l a0/a2/a3,abs; movem.l d0-d7/a0-a6,-(a7)`) to `rts`. Sound writes are ignored in the VM and the host plays the briefing module itself, so nothing is lost. The same loader is in blocks 76, 77 and 78.
+- `avm_set_args(d[8])` passes the game's arguments: d4 the room's mode (0 the briefing, 1 the mission-failed lines, 2 the "Great job" debrief with score and password), d5 the campaign's text. The board picture is the same for every campaign. `DS_AVM_D=d4,d5` with `DS_AVM_TEST`.
+- In the game: the briefing swap is `vm = 2`: the program's screen cropped (86, 5, 160x150; the program's screen is the picture 16 px to the right) into the Genesis portrait panel, so the board, the officer, the pilots and the smoke are the program's own. Without disks or if it can't start, the picture and the bobs as before.
+
+### Music checked against the Amiga's own scene table
+Nobody can listen from here, so the story choices were checked in the Amiga game's code instead. Disk block 78 is the story program; it holds four modules (story1, industry, main, news) and a song table (hunk 3 `$3004`: module, length) used by `$04A8` with d1 = song. Its scene records (the same layout as the Genesis's: `+$A` song, -1 = keep; `+$12`/`+$16` pictures) for the opening story:
+
+| Amiga record | song | its text |
+|---|---|---|
+| `$3F2` | story1 | "The Middle East" |
+| `$492`, `$50E` | (keep) | Kilbaba invades; "The madman built his reputation..." |
+| `$52C` | industry | the refinery (scrolling strips) |
+| `$56C` | main | "The madman's secret bunker." |
+| `$642`-`$7FC` | (keep) | the bunker dialogue |
+| `$926` | news | "The president has instructed the Special Forces'..." |
+| `$95E`, `$97C` | (keep) | "Return to the Gulf" |
+
+The between-campaign dialogues (sequences 1 and 2) start main with the bunker too. So 9 story1, 107 industry and 3 main were right, and the Genesis's 106 (the news report, scene `$2576`) and 110 (the title card after it, `$25AA`) now map to news (it carries on through 110, as on the Amiga; before, both played the Genesis songs). The briefing module is the only one in the briefing room's own program block (block 0), which loads it by name ("briefing", hunk 4 `$124`). Test helpers: `DS_AMIGA_MAP=1` logs which block holds each module and picture; `DS_AMIGA_DUMP=<dir>` writes every decoded program block.
+
+### Sound labels are the defaults
+- The Sound Lab names the 26 bank effects by what they are (`fx_names`: "fx 25 voice "Warning"", "fx 16 big explosion" ...), from the identification pass the user ran (`AUDIO_HANDOFF_TO_MAIN_DEV_2026-10-23.md`).
+- Every event the labels matched now has its default: added 1004 a life lost = fx 11 (the scream). Already there: 0 fx 1, 2/14 fx 4, 31 fx 19, 10 fx 3, 12/13 fx 20, 17/25 fx 16, 1001 fx 26, 1003 and 1007 fx 25, 1005/1006 fx 7/6, 1010 fx 2. Left as they were: 18 (the Genesis's own repeating low-armour beep; the voice is 1007), 6 (the rotor start, see above).
+
+### Amiga Movies
+Settings > Audio > **Amiga Movies** lists the Amiga's movie sequences and plays each in the VM, full screen, until it ends (30 s for the looping ones) or a button: the two sunset pick-ups (block 1 and 2, same first picture, told apart by size), the camp blown up (block 3), the embassy assault and the hostages' bus (4, 5), the madman's bomber (6, Kilbaba in the cockpit, then fire), a commander's report (7), and the five the cutscenes already use. Silent: the VM ignores sound, and no Amiga song has been tied to them. `DS_MOVIES=1` opens the list at start (tests).
+
+### No work-in-progress marking
+There was none in the game itself; the README's "(work in progress)" is gone.

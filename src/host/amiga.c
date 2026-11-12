@@ -2,6 +2,7 @@
  * lab313ru/rnc_propack_source (free for any use). */
 #include "amiga.h"
 #include <SDL3/SDL.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -298,6 +299,7 @@ static void rebuild_modules(void)
             }
             amiga_module *m = &modules[nmodules++];
             SDL_strlcpy(m->name, name, sizeof m->name);
+            if (getenv("DS_AMIGA_MAP")) fprintf(stderr, "map block %d module %s\n", bi, name);
             m->data = out;
             m->len = (int)(head + total);
             m->complete = ok;
@@ -667,7 +669,11 @@ static void collect_anims(void)
             const uint8_t *bm = NULL;
             for (size_t q = p + (anim ? 24 : 12); q + 28 <= b->n && q < p + 64; q++) if (!memcmp(b->d + q, "BMHD", 4)) { bm = b->d + q + 8; break; }
             if (bm) { w = bm[0] << 8 | bm[1]; h = bm[2] << 8 | bm[3]; }
-            if ((w >= 200 && h >= 60) || (w >= 600 && h >= 20)) add_anim(b->d + p, b->n - p);   /* + the wide scrolling strips */
+            if ((w >= 200 && h >= 60) || (w >= 600 && h >= 20)) {
+                int before = nanims;
+                add_anim(b->d + p, b->n - p);   /* + the wide scrolling strips */
+                if (getenv("DS_AMIGA_MAP") && nanims > before) fprintf(stderr, "map block %d anim %s %dx%d frames %d\n", bi, anims[nanims - 1].id, w, h, anims[nanims - 1].nframes);
+            }
             p += anim ? 11 : 8 + be32(b->d + p + 4) - 1;
         }
     }
@@ -831,6 +837,15 @@ int amiga_load_dir(const char *dir)
     rebuild_modules();
     collect_pictures();
     collect_anims();
+    if (getenv("DS_AMIGA_DUMP")) {                 /* test: DS_AMIGA_DUMP=<dir>: every packed program block, decoded */
+        for (int i = 0; i < nblocks; i++) {
+            if (blocks[i].method != 1) continue;
+            char path[600];
+            SDL_snprintf(path, sizeof path, "%s/block%03d.bin", getenv("DS_AMIGA_DUMP"), i);
+            FILE *f = fopen(path, "wb");
+            if (f) { fwrite(blocks[i].d, 1, blocks[i].n, f); fclose(f); }
+        }
+    }
     collect_bobs();
     collect_programs();
     free_blocks();
