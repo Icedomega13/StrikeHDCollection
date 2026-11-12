@@ -86,6 +86,9 @@ typedef struct game_module {
     /* World position of the playfield's top-left pixel (the ground layer's
      * camera); 0 if unavailable. Only meaningful while ws_active(). */
     int (*camera)(int *x, int *y);
+    /* Which of the player's weapons a fire-hook report is: 0 guns, 1 Hydras,
+     * 2 Hellfires; -1 not the player's (Jungle / Urban, g_fire_hook). */
+    int (*weapon_index)(uint32_t shooter, uint32_t weapon);
 } game_module;
 
 extern const game_module *const g_games[];

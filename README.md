@@ -14,7 +14,7 @@ Native PC versions of the three Sega Genesis Strike games: *Desert Strike: Retur
 - **Game Speed**: Smooth (no slowdown) or Original (the console's slowdown).
 - **Difficulty** (all three games): chosen on New Game and kept with each save. *Remastered* keeps the full speed and every bullet on screen but rebalances the damage (bullets sting less than missiles, and a crossfire can't empty your armour in an instant); *Recruit* is gentler; *Original* is the Genesis as shipped, slowdown included. With it: **threat markers** (arrows at the edge of the picture toward enemy guns just off screen) and a **low-armour warning** (the armour bar pulses, and with your Amiga disks the Amiga's computer voice says "Warning"). See `docs/14-difficulty.md`.
 - **Launcher**: the highlighted game's intro plays live behind a gamepad-friendly game picker, and a Continue / Load Game / New Game screen picks up where you left off.
-- **Custom music** (Desert Strike): drop your own .ogg or .wav files into the music folder and they replace the songs they're named after. See `docs/15-custom-music.md`.
+- **Custom music** (all three games): drop your own .ogg or .wav files into the music folder and they replace the songs they're named after. See `docs/15-custom-music.md`.
 - **Amiga edition for Desert Strike (work in progress)**: add your own Amiga Desert Strike disks and the game can use the Amiga's sound effects (weapons, rotor that follows your speed, rescue calls, voice lines), its ProTracker music, its title photos, and its cutscenes, including the animated ones, which run as the original Amiga programs in a small built-in Amiga emulator. Pick Genesis, Amiga or a mix under Settings → Audio → Edition. The mapping of sounds is still being tuned; the **Sound Lab** and `tools/amiga/sound_labeler.html` let you choose your own.
 - **Installer**: Inno Setup, with a ROM page that checks your dumps.
 
@@ -57,7 +57,7 @@ Host keys:
 - **Tab** or **right trigger:** fast forward.
 - **Q / E** or **LB / RB:** step through the objectives on the minimap.
 - **Backspace** or **left trigger** (hold): rewind.
-- **Left Shift** or **Y** (hold): strafe, Desert Strike's hold-A sidestep, without firing a Hellfire. Press A while strafing to fire a Hellfire and keep strafing. The right stick strafes too (left or right). **Strafe Speed** (Settings > System) can make the sidestep 1.5x or 2x faster.
+- **Left Shift** or **Y** (hold): strafe, the hold-A sidestep (all three games), without firing a Hellfire. Press A while strafing to fire a Hellfire and keep strafing. The right stick strafes too (left or right). **Strafe Speed** (Settings > System) can make the sidestep 1.5x or 2x faster.
 - **M**, or hold **Esc / Back**: show or hide the minimap.
 - **Esc** or **Back:** pause menu.
 

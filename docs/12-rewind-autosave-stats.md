@@ -34,6 +34,8 @@ Strength 0–100 % (default 70; 0 turns it off). It goes to every connected pad 
 | Hit | scaled by the armour lost |
 | Life lost | full, 0.7 s |
 
+Firing (issue #5, then Phase 3): the rumble follows the weapon firing, not the ammo count, so it works with unlimited ammo. Desert: from the weapon sound requests (`host_sfx_hook`, the weapon entry in a4). Jungle and Urban: a patch where a projectile leaves a weapon (`$044BD4` / `$00F438`, just after the reload time is set; a0 the shooter, a3 its weapon record) calls `g_fire_hook`; `game->weapon_index` matches a3 against the player's three weapon pointers (`+$34/+$38/+$3C`: guns, Hydras, Hellfires). `DS_FIRE_LOG=1` logs each. Strengths in `fire_rumble` (0.05/0.30 70 ms, 0.30/0.55 110 ms, 0.65/0.90 220 ms, square-root curve, 70 ms minimum).
+
 ## Stats
 Kept per game in `stats.ini` in the settings folder (`src/host/stats.c`). The file is saved every minute in flight, when leaving a game and on quit. Counted from frame-to-frame changes in the HUD values:
 - time flying;

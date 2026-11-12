@@ -85,6 +85,30 @@
     "0429B8": {
       "post": "if (g_damage_hook) R.d[0] = (R.d[0] & 0xFFFF0000u) | (uint16_t)g_damage_hook(R.a[5], R.a[4], (int16_t)R.d[0]);",
       "note": "damage from a weapon hit: a5 = the target, d0 = the damage that $04192E takes off its armour ($2C(a5) at $041940), a4 = the weapon entry (its damage at +8); the host scales it for the difficulty. Crashes and other damage reach $04192E from other callers and are left alone"
+    },
+    "043660": {
+      "imm": "(uint32_t)((R.d[7] & 0xC) ? 0x12C : 0x12C * g_strafe_mul / 0x80)",
+      "why": "strafe (A held) speed in the flight model at $043610: sideways velocity = strafe state x 0x12C on the Genesis; the Strafe Speed setting scales it (g_strafe_mul / 0x80). Only a pure strafe (d7 bits 6/7 without the turn bits 2/3): turning sets bit 6/7 too, for the slide in a turn, which stays as it was"
+    },
+    "043872": {
+      "imm": "(uint32_t)((R.d[7] & 0xC) ? 0xC00 : g_strafe_speed)",
+      "why": "strafe sideways thrust, one way, in the flight model at $04386A: 0xC00 on the Genesis, as Desert's $00CA4E; the Strafe Speed setting can raise it. Only a pure strafe (d7 bits 6/7 without the turn bits 2/3): turning sets bit 6/7 too, for the slide in a turn, which stays as it was"
+    },
+    "043890": {
+      "imm": "(uint32_t)((R.d[7] & 0xC) ? -0xC00 : -g_strafe_speed)",
+      "why": "strafe sideways thrust, the other way (-0xC00 on the Genesis). Only a pure strafe (d7 bits 6/7 without the turn bits 2/3): turning sets bit 6/7 too, for the slide in a turn, which stays as it was"
+    },
+    "044302": {
+      "post": "if (g_strafe_mul != 0x80) { R.d[2] = (uint32_t)(int32_t)((int64_t)(int32_t)R.d[2] * g_strafe_mul / 0x80); R.d[3] = (uint32_t)(int32_t)((int64_t)(int32_t)R.d[3] * g_strafe_mul / 0x80); }",
+      "why": "strafe (A held, $FF1637 bit 6) in the flight model at $0442BE: sideways velocity = the forward speed table at 90 degrees, quartered (asr #2); the Strafe Speed setting scales it (flags are overwritten by the bset that follows)"
+    },
+    "044BD4": {
+      "post": "if (g_fire_hook) g_fire_hook(R.a[0], R.a[3]);",
+      "note": "a projectile is fired ($044B68: a0 the shooter, a3 its weapon record; the reload time was just set): the host rumbles for the player's weapons, unlimited ammo or not"
+    },
+    "0012EC": {
+      "post": "if (g_music_hook) { int r_ = g_music_hook((int)(uint8_t)R.d[0]); g_music_ctx = 0; if (r_ == 1) goto L_001304; if (r_ == 2) SET_DB(0, 0); }",
+      "note": "sound command to the Z80 driver (the byte d0, written to $A01FFF): songs and effects alike. Hook result 1: skip it (the bus request just made is released at $001304); 2: send 0 instead"
     }
   }
 }

@@ -16,6 +16,7 @@ int (*g_music_hook)(int id);
 int g_music_ctx;
 uint32_t g_scene_rec;
 int (*g_damage_hook)(uint32_t target, uint32_t weapon, int dmg);
+void (*g_fire_hook)(uint32_t shooter, uint32_t weapon);
 uint32_t cpu_cur_pc;
 void (*cpu_fatal_hook)(void);
 recomp_fn (*cpu_lookup)(uint32_t pc);

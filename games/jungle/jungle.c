@@ -19,6 +19,7 @@ static void cheats(int g, int f, int a, int l) { strike_cheats(&hcfg, g, f, a, l
  * a bullet is a weapon entry whose projectile is the bullet object $FF2F44. */
 static int hit_class(uint32_t t, uint32_t w) { return strike_hit_class(&hcfg, 0x2F44, t, w); }
 static int camera(int *x, int *y) { return strike_camera(&hcfg, x, y); }
+static int weapon_index(uint32_t s, uint32_t w) { return strike_weapon_index(&hcfg, s, w); }
 
 /* Minimap: the pause map's list and icon builder ($039906, $0399B6,
  * $039784), its world-to-map transform ($039726: world/32 + (56, 48)). */
@@ -55,4 +56,5 @@ const game_module game_jungle = {
     .mm_view = &mview,
     .hit_class = hit_class,
     .camera = camera,
+    .weapon_index = weapon_index,
 };

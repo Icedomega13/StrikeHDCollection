@@ -19,6 +19,7 @@ static void cheats(int g, int f, int a, int l) { strike_cheats(&hcfg, g, f, a, l
  * a bullet is a weapon entry whose projectile is the bullet object $FF4F20. */
 static int hit_class(uint32_t t, uint32_t w) { return strike_hit_class(&hcfg, 0x4F20, t, w); }
 static int camera(int *x, int *y) { return strike_camera(&hcfg, x, y); }
+static int weapon_index(uint32_t s, uint32_t w) { return strike_weapon_index(&hcfg, s, w); }
 
 /* Minimap: the pause map's list and icon builder ($0026BC, $00276C,
  * $002532), its world-to-map transform ($0024CE: world >> [$FF0616] +
@@ -56,4 +57,5 @@ const game_module game_urban = {
     .mm_view = &mview,
     .hit_class = hit_class,
     .camera = camera,
+    .weapon_index = weapon_index,
 };

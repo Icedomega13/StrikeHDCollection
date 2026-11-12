@@ -46,6 +46,9 @@ extern uint32_t g_scene_rec;
 /* Damage about to be dealt ($00A6F6 patch, Desert): target object, weapon
  * entry (a4), damage. Returns the damage to deal. NULL: unchanged. */
 extern int (*g_damage_hook)(uint32_t target, uint32_t weapon, int dmg);
+/* Jungle / Urban Strike: a projectile leaves a weapon (the shooter's object,
+ * its weapon record). Desert reports its weapons through the sound hook. */
+extern void (*g_fire_hook)(uint32_t shooter, uint32_t weapon);
 
 typedef void (*recomp_fn)(uint32_t entry);
 extern recomp_fn (*cpu_lookup)(uint32_t pc); /* the running game's table (generated) */

@@ -910,6 +910,7 @@ static void mm_update(void)
     if (!game || !game->minimap || !game->mm_view || att_on || extracting || sandbox) return;
     if (!hud_ok || !game->minimap(&mmd)) return;
     mmd_ok = 1;                                  /* also feeds autosave and stats */
+    if (SDL_getenv("DS_POS_LOG") && mmd.have_player) SDL_Log("pos %d %d frame %llu", mmd.px, mmd.py, (unsigned long long)g_frame);   /* test: strafe speed */
     if (!g_set.minimap) return;
     if (mm.game != game || mm.level != mmd.level) {
         if (mm.tex) SDL_DestroyTexture(mm.tex);
@@ -1098,6 +1099,17 @@ static void fire_rumble(int weapon)              /* 0 gun, 1 rockets, 2 missiles
     if (weapon >= 0 && weapon < 3) rumble(lo[weapon], hi[weapon], ms[weapon]);
 }
 
+/* Jungle / Urban: a projectile left one of the player's weapons ($044BD4 /
+ * $00F438), so the rumble follows the firing, unlimited ammo or not.
+ * Desert's comes from its weapon sounds (host_sfx_hook). */
+static void host_fire_hook(uint32_t shooter, uint32_t weapon)
+{
+    if (!game || !game->weapon_index || sandbox || extracting || att_on) return;
+    int i = game->weapon_index(shooter, weapon);
+    if (SDL_getenv("DS_FIRE_LOG")) SDL_Log("fire %d frame %llu (shooter %06X weapon %06X)", i, (unsigned long long)g_frame, (unsigned)(shooter & 0xFFFFFF), (unsigned)(weapon & 0xFFFFFF));
+    fire_rumble(i);
+}
+
 static void autosave(const char *why)
 {
     if (!g_set.autosave || !game) return;
@@ -1264,7 +1276,6 @@ static void watch_frame(void)
         int d = wt.h.ammo[i] - h.ammo[i];
         if (wt.h.ammo[i] < 0 || h.ammo[i] < 0 || d <= 0 || d > 50) continue;
         s->shots[i] += d;
-        if (SDL_strcmp(game->id, "desert")) fire_rumble(i);   /* Desert: from the weapon sound (works with unlimited ammo) */
     }
     if (h.fuel_max > 0) {                        /* low-fuel warning: once per dip, re-armed by refuelling */
         int lo = h.fuel_max / 4;
@@ -2063,7 +2074,7 @@ static void scene_frame(void)
             if (hi != 0 && hi != 0x7F) SDL_Log("spr %d x %04X frame %llu", k, x, (unsigned long long)g_frame);
         }
     }
-    input_rstick_strafe = g_set.rstick_strafe && game && !SDL_strcmp(game->id, "desert");
+    input_rstick_strafe = g_set.rstick_strafe && game;   /* all three strafe with A held (Urban: its strafe button, A by default) */
     { int k = extracting || att_on ? 2 : 2 + g_set.strafe_speed;      /* Strafe Speed setting: x1, x1.5, x2 */
       g_strafe_speed = 0xC00 * k / 2; g_strafe_mul = 0x80 * k / 2; }
     if (SDL_getenv("DS_VEL_LOG") && g_frame % 10 == 0) { uint32_t pl = R32(0xFF251C) & 0xFFFFFF, ps = pl ? R32(pl + 0x28) & 0xFFFFFF : 0; if (ps >= 0xFF0000) SDL_Log("vel %d %d pad %02X frame %llu ss %X f1088 %X", (int)R32(ps + 0x18), (int)R32(ps + 0x1C), g_ram[0x1C79], (unsigned long long)g_frame, (unsigned)g_strafe_speed, (unsigned)R32(0xFF1088)); }
@@ -2232,6 +2243,21 @@ static int host_music_hook(int id)
 {
     static int last_id, genesis_on;
     if (!game || sandbox || extracting || att_on) return 0;
+    if (SDL_strcmp(game->id, "desert")) {            /* Jungle: the Z80 driver's command byte ($0012EC); Urban: its song request ($000822) */
+        if (!SDL_strcmp(game->id, "jungle") && id >= 48) return 0;   /* Jungle: effects (and driver commands), untouched */
+        if (id < 0) return 0;                        /* Urban: nothing to do */
+        if (SDL_getenv("DS_SFX_DEBUG")) SDL_Log("music %d (frame %llu)", id, (unsigned long long)g_frame);
+        if (id == 0) { musicpack_stop(); genesis_on = 0; return 0; }
+        if (g_sound_lab) { lab_mus = id; lab_flash = SDL_GetTicksNS() + 1500000000ull; }
+        if (g_set.custom_music && custom_music_play(id)) {
+            int r = genesis_on ? 2 : 1;              /* 2: the Genesis song gets a stop instead */
+            genesis_on = 0;
+            return r;
+        }
+        musicpack_stop();
+        genesis_on = 1;
+        return 0;
+    }
     int key = g_music_ctx == 1 ? 100000 + id : id;
     if (id == 0 || id == 100) { music_stop(); genesis_on = 0; return 0; }
     if (id == 3 && last_id == 7280) key = 300000 + id;
@@ -2261,13 +2287,23 @@ static void write_music_readme(void)
     char d[1200], f[1300];
     SDL_snprintf(d, sizeof d, "%sdesert", music_dir);
     SDL_CreateDirectory(d);
+    SDL_snprintf(d, sizeof d, "%sjungle", music_dir);
+    SDL_CreateDirectory(d);
+    SDL_snprintf(d, sizeof d, "%surban", music_dir);
+    SDL_CreateDirectory(d);
     SDL_snprintf(f, sizeof f, "%sREADME.txt", music_dir);
     SDL_PathInfo info;
-    if (SDL_GetPathInfo(f, &info)) return;
+    if (SDL_GetPathInfo(f, &info)) {                 /* an older README (Desert only): rewrite it with Jungle and Urban */
+        size_t n = 0;
+        char *old = SDL_LoadFile(f, &n);
+        int has = old && SDL_strstr(old, "urban/");
+        SDL_free(old);
+        if (has) return;
+    }
     static const char txt[] =
         "Custom music for Strike Remastered Collection HD\n"
         "================================================\n\n"
-        "Put your own .ogg or .wav files in the game's folder here (desert/ for now).\n"
+        "Put your own .ogg or .wav files in the game's folder here (desert/, jungle/, urban/).\n"
         "Each file replaces the song it is named after, ahead of the Amiga and Genesis music.\n"
         "Turn it on or off in Settings > Audio > Custom Music.\n\n"
         "Name a file after the song, or start its name with the song's number:\n\n"
@@ -2281,7 +2317,19 @@ static void write_music_readme(void)
         "  game over.ogg        (300003, plays once)\n"
         "  ending.ogg           the ending and credits (108, 10)\n\n"
         "Examples: \"title.ogg\", \"117 my title theme.ogg\", \"100104.wav\" (the second campaign's briefing).\n"
-        "Songs loop, except the ones marked \"plays once\". The Sound Lab (Settings > Audio) shows the number of each song as it plays.\n";
+        "Songs loop, except the ones marked \"plays once\". The Sound Lab (Settings > Audio) shows the number of each song as it plays.\n\n"
+        "Jungle Strike (jungle/)\n"
+        "  title.ogg            the logos and title (20)\n"
+        "  story.ogg            the story, \"Somewhere in the Pacific\" (31)\n"
+        "  mission.ogg          a campaign's opening, \"The White House\" (10)\n"
+        "  flying.ogg           in flight (25)\n"
+        "  26                   a short cue in flight (plays once)\n"
+        "\nUrban Strike (urban/)\n"
+        "  intro.ogg            the logos (14)\n"
+        "  title.ogg            the title and menu (15)\n"
+        "  briefing.ogg         the briefing, \"Welcome back, commander\" (7)\n"
+        "  (Urban has no music in flight.)\n\n"
+        "Other songs have numbers too: turn on the Sound Lab and it shows each one as it starts.\n";
     SDL_IOStream *io = SDL_IOFromFile(f, "w");
     if (io) { SDL_WriteIO(io, txt, sizeof txt - 1); SDL_CloseIO(io); }
 }
@@ -2293,7 +2341,21 @@ static int custom_music_play(int key)
     char dir[1200], path[1200];
     SDL_snprintf(dir, sizeof dir, "%s%s/", music_dir, game->id);
     const char *name = "";                               /* the names README.txt lists */
-    if (key >= 300000) name = "game over";
+    int desert = !SDL_strcmp(game->id, "desert");
+    if (!SDL_strcmp(game->id, "urban")) {                /* Urban: the songs heard so far (README.txt) */
+        switch (key) {
+        case 14: name = "intro"; break;
+        case 15: name = "title"; break;
+        case 7: name = "briefing"; break;
+        }
+    } else if (!desert) {                                /* Jungle */
+        switch (key) {
+        case 20: name = "title"; break;
+        case 31: name = "story"; break;
+        case 10: name = "mission"; break;
+        case 25: name = "flying"; break;
+        }
+    } else if (key >= 300000) name = "game over";
     else if (key >= 100000) name = "briefing";
     else switch (key) {
     case 105: case 117: name = "title"; break;
@@ -2305,10 +2367,11 @@ static int custom_music_play(int key)
     case 108: case 10: name = "ending"; break;
     case 7280: name = "life lost"; break;
     }
-    int alt = key == 105 ? 117 : key == 117 ? 105 : key == 108 ? 10 : key == 10 ? 108 : -1;   /* the same song, two numbers */
+    int alt = !desert ? -1 : key == 105 ? 117 : key == 117 ? 105 : key == 108 ? 10 : key == 10 ? 108 : -1;   /* the same song, two numbers */
     if (!musicpack_find(dir, key, name, path, sizeof path) && (alt < 0 || !musicpack_find(dir, alt, name, path, sizeof path))) return 0;
     musicpack_set_volume(g_set.custom_music_vol / 100.0f);
-    int jingle = key == 2 || key == 300003 || key == 7280 || key == 118;   /* mission failed, game over, life lost, campaign complete */
+    int jingle = desert ? key == 2 || key == 300003 || key == 7280 || key == 118    /* mission failed, game over, life lost, campaign complete */
+                        : key == 26;                                                 /* Jungle: the short cue in flight */
     if (!musicpack_start(path, AUDIO_RATE, !jingle)) return 0;
     SDL_strlcpy(mus_playing, "custom", sizeof mus_playing);
     if (SDL_getenv("DS_SFX_DEBUG")) SDL_Log("music %d -> custom %s", key, path);
@@ -3701,6 +3764,7 @@ int main(int argc, char **argv)
     g_sfx_hook = host_sfx_hook;
     g_music_hook = host_music_hook;
     g_damage_hook = host_damage_hook;
+    g_fire_hook = host_fire_hook;
     rw_state = SDL_malloc(cpu_state_size());
 
     win = SDL_CreateWindow(APP_TITLE, g_set.window_w, g_set.window_h, SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);

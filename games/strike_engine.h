@@ -99,6 +99,19 @@ static inline int strike_hit_class(const strike_hud_cfg *c, uint16_t bullet, uin
     return (g_rom[weapon] << 24 | g_rom[weapon + 1] << 16 | g_rom[weapon + 2] << 8 | g_rom[weapon + 3]) == (0xFF0000u | bullet) ? 0 : 1;
 }
 
+/* The player's weapon record pointers sit at +weapons_off, +4, +8 of its
+ * object (guns, Hydras, Hellfires: the three fire buttons' weapons). */
+static inline int strike_weapon_index(const strike_hud_cfg *c, uint32_t shooter, uint32_t weapon)
+{
+    uint32_t p = (uint32_t)(strike_r16(c->player_ptr) << 16 | strike_r16(c->player_ptr + 2)) & 0xFFFFFF;
+    if (p < 0xFF0000 || (shooter & 0xFFFFFF) != p) return -1;
+    for (int i = 0; i < 3; i++) {
+        uint32_t a = p + c->weapons_off + (uint32_t)i * 4;
+        if (((uint32_t)(strike_r16(a) << 16 | strike_r16(a + 2)) & 0xFFFFFF) == (weapon & 0xFFFFFF)) return i;
+    }
+    return -1;
+}
+
 /* The ground layer's camera: x at +$4A, y at +$48 (docs/07-widescreen.md). */
 static inline int strike_camera(const strike_hud_cfg *c, int *x, int *y)
 {
